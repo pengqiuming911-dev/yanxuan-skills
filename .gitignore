@@ -13,6 +13,12 @@ workdir/
 # Install metadata
 .openclaw/
 
+# assets/png:策略纯文本 skill,不入仓(运行时在 workdir 现生成)
+assets/
+*.png
+*.jpg
+*.jpeg
+
 # 凭证(本就在 skill 目录外,兜底)
 tongyu-creds.json
 workbench-token.json

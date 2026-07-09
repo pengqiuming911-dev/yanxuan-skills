@@ -34,7 +34,8 @@ yanxuan-skills/
 - `references/*.md`(剔除所有 `.bak*`、`*.docx` 销售圣经)
 - `scripts/*.py`(剔除所有 `.bak*`、`__pycache__/`、`*.pyc`)
 - `evals/evals.json`
-- `assets/` 仅保留 SKILL.md 实际引用的 png(构建时以 SKILL.md 中 `assets/xxx.png` 引用为准,预期约 7 张)
+
+> **assets 不入仓**(用户最终决策:纯文本 skill,只保证 SKILL.md/references/scripts 为最新;png 运行时在 workdir 现生成)。SKILL.md/references 中对 `assets/*.png` 的引用在仓库内为悬空引用,不影响运行(图在运行期生成)。
 
 ### 永不入仓(排除规则,`.sync-excludes` + `.gitignore`)
 - `*.bak*`、`*.pyc`、`__pycache__/`
@@ -46,7 +47,7 @@ yanxuan-skills/
 
 ### Canonical 源(初始入库基准)
 - 内容以服务器 **B 版**(`/root/.openclaw/workspace/skills/structured-product-copywriter`)为准:SKILL.md 22KB、references/scripts 更新更全。
-- assets 取精简集(参照 A 版 `/root/.claude/skills/...` 的 7 张被引用 png)。
+- assets 不入仓(见上)。
 - 入库即"基准快照"。之后仓库为准。
 
 ## 4. sync.sh 行为

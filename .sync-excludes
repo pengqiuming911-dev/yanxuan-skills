@@ -9,3 +9,5 @@ copy_short.txt
 推介材料.docx
 *.docx
 manifest.json
+assets/
+*.png
