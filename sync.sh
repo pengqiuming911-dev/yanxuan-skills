@@ -22,7 +22,7 @@ tar_excludes() {
 
 # 仓库里要分发的条目:SKILL.md + 现有子目录(不含 assets)
 repo_items() {
-  printf 'SKILL.md'
+  echo SKILL.md
   for d in "$REPO_SKILL"/*/; do
     [ -d "$d" ] || continue
     basename "$d"
