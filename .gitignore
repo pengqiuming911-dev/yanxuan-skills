@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+
+# Backups
+*.bak*
+
+# Runtime outputs / 产出物
+workdir/
+*.docx
+~$*
+
+# Install metadata
+.openclaw/
+
+# 凭证(本就在 skill 目录外,兜底)
+tongyu-creds.json
+workbench-token.json
+
+# 临时
+/tmp/

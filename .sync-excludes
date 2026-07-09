@@ -1,0 +1,11 @@
+*.bak*
+*.pyc
+__pycache__/
+workdir/
+.openclaw/
+copy_announce.txt
+copy_long.txt
+copy_short.txt
+推介材料.docx
+*.docx
+manifest.json
