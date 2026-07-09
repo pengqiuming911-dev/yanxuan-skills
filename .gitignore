@@ -25,3 +25,8 @@ workbench-token.json
 
 # 临时
 /tmp/
+
+# 仅本地维护,不入仓
+docs/
+.sync-excludes
+sync.sh
