@@ -12,6 +12,7 @@ Word 上传仅作为附件/兜底。
 import argparse
 import json
 import os
+import re
 import ssl
 import sys
 import urllib.error
@@ -71,14 +72,24 @@ def product_short_name(product_name):
     return name
 
 
+DOC_TITLE_PREFIX = "销售物料："
+
+
 def default_doc_title(manifest):
     explicit_short = (manifest.get("product_short_name") or "").strip()
     product_name = (manifest.get("product_name") or "").strip()
     structure_name = (manifest.get("structure_name") or "").strip()
     short = explicit_short or product_short_name(product_name)
     if short and structure_name:
-        return f"{short}-{structure_name}"
-    return (manifest.get("title") or "").strip()
+        base = f"{short}-{structure_name}"
+    else:
+        base = (manifest.get("title") or "").strip()
+    if not base:
+        return base
+    # 飞书云文档标题统一加「销售物料：」前缀，已带则不重复加。
+    if base.startswith(DOC_TITLE_PREFIX):
+        return base
+    return f"{DOC_TITLE_PREFIX}{base}"
 
 
 def normalize_section_type(typ):
@@ -99,7 +110,14 @@ def manifest_to_rich_manifest(manifest_path):
     for sec in m.get("sections", []):
         typ = normalize_section_type(sec.get("type"))
         if typ == "copy_file":
-            sections.append({"type": "body", "text": read_text_relative(base_dir, sec.get("path", ""))})
+            # 按空行拆成多段，每段一个 body section。飞书 markdown convert 对一段
+            # 多段落文本会乱序（实测首段会被挪到末尾），拆成每段单独 convert 成单 block，
+            # 按 section 顺序插入即可锁定段落顺序。copy_long.txt 的 🚀 标题行才能稳在首行。
+            content = read_text_relative(base_dir, sec.get("path", ""))
+            for para in re.split(r"\n\s*\n", content):
+                para = para.strip()
+                if para:
+                    sections.append({"type": "body", "text": para})
         elif typ == "image":
             path = sec.get("path", "")
             sections.append({"type": "image", "path": path, "caption": sec.get("caption", "")})

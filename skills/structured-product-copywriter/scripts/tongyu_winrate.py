@@ -125,6 +125,22 @@ def result_screenshot_box(page):
     )
 
 
+def _crop_fallback(path):
+    """bounding-box 定位失败时的整页裁图兜底：
+    去掉顶部导航栏、底部 1/3、右边 1/4，只留中间结果区（胜率/平均敲出时间/已完结合约表）。
+    与 SKILL「先定位结果容器 bounding box」的优先口径一致；此为 box 定不到时的兜底。"""
+    try:
+        from PIL import Image
+    except ImportError:
+        return
+    im = Image.open(path)
+    w, h = im.size
+    top = int(h * 0.10)        # 顶部约 10%：导航栏
+    bottom = int(h * 2 / 3)    # 去掉底部 1/3
+    right = int(w * 3 / 4)     # 去掉右边 1/4
+    im.crop((0, top, right, bottom)).save(path)
+
+
 def run(args):
     from playwright.sync_api import sync_playwright
 
@@ -187,15 +203,32 @@ def run(args):
             if args.lock != 3:
                 print(set_by_label(page, TEXT["lock"], args.lock))
             click_exact_text(page, TEXT["analyze"])
-            page.wait_for_timeout(6000)
-            winrate = page.evaluate(
-                """(label) => {
-                  const el = Array.from(document.querySelectorAll('*')).find(e => e.children.length === 0 && e.textContent.trim() === label);
-                  return el ? el.parentElement.textContent.replace(label, '').trim() : null;
-                }""",
-                TEXT["winrate"],
+            page.wait_for_timeout(8000)
+            read_label = """(label) => {
+              const el = Array.from(document.querySelectorAll('*')).find(e => e.children.length === 0 && e.textContent.trim() === label);
+              return el ? el.parentElement.textContent.replace(label, '').trim() : null;
+            }"""
+            winrate = page.evaluate(read_label, TEXT["winrate"])
+            date_range = page.evaluate(
+                """() => {
+                  // 先找含"回测区间"的叶子节点取父级文本
+                  const els = Array.from(document.querySelectorAll('*'));
+                  const t = els.find(e => e.children.length === 0 && (e.textContent||'').includes('回测区间'));
+                  if (t && t.parentElement) {
+                    const s = t.parentElement.textContent.replace('回测区间','').trim();
+                    if (/20\\d{2}/.test(s)) return s;
+                  }
+                  // 兜底：正文里抓形如 2016-07-11 ~ 2026-07-10 / 2016年07月11日至2026年07月10日 的区间
+                  const m = (document.body.innerText||'').match(/20\\d{2}[\\-\\/年.]\\d{1,2}[\\-\\/月.]\\d{1,2}[^0-9]{0,6}20\\d{2}[\\-\\/年.]\\d{1,2}[\\-\\/月.]\\d{1,2}/);
+                  return m ? m[0] : null;
+                }"""
             )
-            box = result_screenshot_box(page)
+            box = None
+            for _ in range(3):
+                box = result_screenshot_box(page)
+                if box:
+                    break
+                page.wait_for_timeout(1500)
             if box:
                 page.screenshot(path=args.output, full_page=True, clip={
                     "x": float(box["x"]),
@@ -204,8 +237,11 @@ def run(args):
                     "height": float(box["height"]),
                 })
             else:
+                # 兜底：整页截图后裁掉顶部导航栏、底部 1/3、右边 1/4，只留中间结果区。
                 page.screenshot(path=args.output, full_page=True)
+                _crop_fallback(args.output)
             print(f"winrate: {winrate}")
+            print(f"date_range: {date_range}")
             print(f"screenshot: {args.output}")
         finally:
             ctx.close()

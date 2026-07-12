@@ -30,3 +30,8 @@ workbench-token.json
 docs/
 .sync-excludes
 sync.sh
+
+# 单次产品运行产出物(含真实产品名/AMAC代码/飞书链接,不入仓)
+skills/structured-product-copywriter/manifest.json
+skills/structured-product-copywriter/copy_long.txt
+skills/structured-product-copywriter/copy_short.txt
