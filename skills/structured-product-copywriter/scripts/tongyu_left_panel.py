@@ -119,6 +119,7 @@ def main():
             fill_field("期限", args.term)
             fill_field("首次观察敲出价", args.ko)
             fill_field("期末障碍价", args.parachute)
+            fill_field("末次观察敲出价", args.parachute)
             fill_field("派息障碍价", args.coupon_line)
             fill_field("敲出价递减步长", args.step_down)
             fill_field("每月或有派息", args.coupon)
