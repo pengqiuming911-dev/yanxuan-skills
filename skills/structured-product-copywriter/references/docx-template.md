@@ -40,7 +40,7 @@ python3 scripts/create_feishu_doc.py --manifest manifest.json --title "产品简
 - 第 2 节：只贴与第 1 节文末完全相同的结构要素（含首行 `结构：<结构名称>`、打款日截至、入场时间），不写正文分析。
 - 第 3 节、第 4 节：正文暂时为空，不要自行生成话术。
 - 第 5 节：图片必须来自通毓产品点位页“复制为图片”的原始 PNG。
-- 第 6 节：先写一句“回测时间从YYYY年MM月DD日到YYYY年MM月DD，本产品胜率：XX.XX%”，再插入通毓结构化产品回测结果截图。**回测区间用 `tongyu_winrate.py` 实际输出的 `date_range`**（如 2016-07-09至2026-07-08），不要套旧默认 2016-06-26~2026-06-25。截图先定位结果容器 bounding box；定位不到按整页裁图兜底（去顶导航+底1/3+右1/4）。
+- 第 6 节：先写一句“回测时间从YYYY年MM月DD日到YYYY年MM月DD，本产品胜率：XX.XX%”，再插入通毓结构化产品回测结果截图。**回测区间=硬性 10 年（开始日=今天−10 年、结束日=今天），用 `tongyu_winrate.py` 实际输出的 `date_range`**（如 2016-07-14至2026-07-14），不要套旧默认 2016-06-26~2026-06-25。短历史标的终端自动 clamp、照实写（可能 < 10 年）。截图先定位结果容器 bounding box；定位不到按整页裁图兜底（去顶导航+底1/3+右1/4）。
 - 第 7 节：留 `[图片待补: 一页通]`。
 - 第 8 节：固定写三行占位：`申购费：（待补充）`、`赎回费：（待补充）`、`基金合同：（待补充）`。不得省略该节，不得自行编费用数字。
 - 第 9 节：先写管理人名称和 AMAC 最终详情页链接，再插入详情页内容容器截图。
@@ -67,6 +67,8 @@ python3 scripts/create_feishu_doc.py --manifest manifest.json --title "产品简
 
 ## manifest 骨架
 
+> **第 6 节胜率句的日期/胜率是占位符**（`<date_range ...>`、`<winrate ...>`），必须用 `tongyu_winrate.py` 实际输出的 `date_range` 和 `winrate` 替换，**不要照抄骨架、不要套旧默认 `2016-06-26~2026-06-25`（已过期）**。终端默认回测区间随当天滚动——今天是哪天，区间结尾就滚到哪天（2026-07-13 跑出的区间结尾 ≈ 2026-07-12）；脚本会打印 `date_range`，照填即可。胜率截图本身从通毓实时结果页截取，天然是当前时间，无需额外处理。
+
 ```json
 {
   "product_name": "泰创纶哲CTA一期私募证券投资基金",
@@ -84,7 +86,7 @@ python3 scripts/create_feishu_doc.py --manifest manifest.json --title "产品简
     {"type":"subheading","text":"产品派息与敲出观察点位表图片"},
     {"type":"image","path":"assets/product-card.png","caption":"产品派息与敲出观察点位表图片"},
     {"type":"subheading","text":"产品胜率数据"},
-    {"type":"body","text":"回测时间从2016年06月26日到2026年06月25，本产品胜率：98.14%"},
+    {"type":"body","text":"回测时间从<date_range 起 YYYY年MM月DD日>到<date_range 止 YYYY年MM月DD日>，本产品胜率：<winrate XX.XX>%"},
     {"type":"image","path":"assets/tongyu-winrate.png","caption":"产品胜率数据截图"},
     {"type":"subheading","text":"一页通"},
     {"type":"body","text":"[图片待补: 一页通]"},
@@ -106,7 +108,11 @@ python3 scripts/create_feishu_doc.py --manifest manifest.json --title "产品简
 
 ## 销售常见问题固定链接（第 12 节）
 
-第 12 节 `link_list` 的 7 个条目，按顺序填入下列飞书 `/docx/` 链接（已核对文档标题一致，2026-07-11 确认可点跳转）。**没有 URL 不得用纯标签冒充**——拿不到就标 `[链接待补:xxx]` 并提示用户补：
+第 12 节用 `link_list` section，items 每条 `{label, url}`：`label` 是中文标题（如「管理人相关常见问题」），`url` 是飞书 `/docx/` 链接。workbench `create-rich-docx` 会逐条转成 `- [label](url)` markdown 再 convert 成独立 block，飞书云文档里展示成 **可点超链接清单**，可见文字是标题、不是裸 URL。
+
+**items 可留空**（manifest 骨架就是 `"items":[]`）：`scripts/create_feishu_doc.py` 内置下列 7 条默认链接作为单一事实源，留空时自动补全。手填 items 时每条必须有真实 `url`，且 `label` 不要写成 URL（label==url 时脚本会改回「链接」兜底，避免可见文字是长链接）。拿不到某条 url 时**不要**塞无 url 的纯标签——直接留空让脚本补默认全 7 条。
+
+7 条默认链接（2026-07-11 确认可点跳转）：
 
 1. 管理人相关常见问题 → https://kcngap16uccc.feishu.cn/docx/QsiEdsgkSohqCPx4OpccoIwAnGf
 2. 交易台相关问题 → https://kcngap16uccc.feishu.cn/docx/JVsCdkwtFoNhLNxW7Mbc4wQynrg
