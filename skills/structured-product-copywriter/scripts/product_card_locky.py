@@ -2,6 +2,7 @@
 """Generate product card PNG for 锁盈 (lock-in profit) structure via Tongyu."""
 import base64
 import argparse
+from datetime import date
 from pathlib import Path
 from PIL import Image, ImageChops
 
@@ -91,6 +92,9 @@ def main():
     ap.add_argument("--output", required=True)
     args = ap.parse_args()
 
+    # 入场日期默认取今天（产品卡「入场日期」按当前日期，见 product-position-card.md）。
+    entry_date = args.entry_date or date.today().isoformat()
+
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
@@ -133,7 +137,7 @@ def main():
             11: args.rate2_start,
             12: args.rate2_end,
             13: args.rate2,
-            14: args.entry_date.replace("/", "-"),
+            14: entry_date.replace("/", "-"),
             15: args.entry_point,
         }
 

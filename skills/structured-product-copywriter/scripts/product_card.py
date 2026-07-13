@@ -7,6 +7,7 @@ near-white borders so the final PNG contains only effective content.
 """
 import argparse
 import base64
+from datetime import date
 from pathlib import Path
 
 TOOL_URL = "https://terminal.tongyu-quant.com/smallTool/index.html#/product-position"
@@ -98,6 +99,9 @@ def main():
     ap.add_argument("--title", default="")
     args = ap.parse_args()
 
+    # 入场日期默认取今天（产品卡「入场日期」按当前日期，见 product-position-card.md）。
+    # 用户显式传 --entry-date 则尊重用户值（如产品实际入场日是未来某天）。
+    entry_date = args.entry_date or date.today().isoformat()
     leverage = round(100 / args.margin, 1) if args.margin else ""
     product_title = args.title or f"{args.underlying} {leverage}x DCN"
     values = {
@@ -111,7 +115,7 @@ def main():
         7: args.coupon,
         8: args.coupon_line,
         9: 1,
-        10: args.entry_date.replace("/", "-"),
+        10: entry_date.replace("/", "-"),
         11: args.entry_point,
     }
 

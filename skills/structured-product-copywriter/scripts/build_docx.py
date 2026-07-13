@@ -13,7 +13,7 @@ manifest 示例:
     {"type":"heading","text":"产品派息与敲出观察点位表"},
     {"type":"image","path":"product-card.png","caption":"产品结构解析卡"},
     {"type":"heading","text":"产品胜率数据"},
-    {"type":"body","text":"回测区间 2016-06-26 至 2026-06-25,胜率 98.14%"},
+    {"type":"body","text":"回测时间从<脚本 date_range 起>到<脚本 date_range 止>，本产品胜率：<脚本 winrate>%"},
     {"type":"image","path":"winrate.png","caption":"通毓终端回测结果"}
   ]
 }

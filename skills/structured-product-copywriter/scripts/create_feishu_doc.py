@@ -32,6 +32,45 @@ STRUCTURE_SUFFIXES = (
 )
 
 
+# 第 12 节「销售常见问题」的 7 条飞书 /docx/ 链接。label=标题、url=飞书云文档，
+# 作为本技能单一事实源：manifest 里 link_list 的 items 留空时自动补全，
+# 保证写入飞书云文档的是 `- [标题](url)` 可点清单，而不是裸 URL 长链接。
+# （来源 references/docx-template.md「销售常见问题固定链接」，2026-07-11 确认可点跳转。）
+DEFAULT_FAQ_LINKS = [
+    {"label": "管理人相关常见问题", "url": "https://kcngap16uccc.feishu.cn/docx/QsiEdsgkSohqCPx4OpccoIwAnGf"},
+    {"label": "交易台相关问题", "url": "https://kcngap16uccc.feishu.cn/docx/JVsCdkwtFoNhLNxW7Mbc4wQynrg"},
+    {"label": "托管相关常见问题", "url": "https://kcngap16uccc.feishu.cn/docx/TzWXdKAaeol7kTxs3BNcowqunJh"},
+    {"label": "申购、赎回流程以及常见问题", "url": "https://kcngap16uccc.feishu.cn/docx/TiJ3daOWvocmofx9FgZcNI2lnce"},
+    {"label": "衍生品设计相关问题", "url": "https://kcngap16uccc.feishu.cn/docx/FTmcddqyqobg2UxW2PRcuslFnje"},
+    {"label": "衍选公司相关常见问题", "url": "https://kcngap16uccc.feishu.cn/docx/SWU3dgmHgoi8Pvx4TitccYisnbd"},
+    {"label": "销售沟通常见问题", "url": "https://kcngap16uccc.feishu.cn/docx/GMDodL9xSo2ejExMeOfc7H4unSh"},
+]
+
+
+def faq_link_items(sec):
+    """归一 link_list 的 items：留空则补 DEFAULT_FAQ_LINKS；手填的逐条校验 label/url 形状。
+
+    手填 items 时常见错形是把 URL 当 label（`{label:url, url:url}` → 渲染成可见文字是长链接）。
+    这里强制：缺 label 用「链接」兜底、label 恰好等于 url 时改回「链接」，保证可见文字是标题而非裸 URL。
+    """
+    raw_items = sec.get("items") or []
+    if not raw_items:
+        return [dict(x) for x in DEFAULT_FAQ_LINKS]
+    out = []
+    for it in raw_items:
+        if not isinstance(it, dict):
+            continue
+        label = (it.get("label") or "").strip()
+        url = (it.get("url") or "").strip()
+        if not url:
+            # 没 url 的条目不算超链接，跳过（不静默塞无链接标签，见硬规则 15）。
+            continue
+        if not label or label == url:
+            label = "链接"
+        out.append({"label": label, "url": url})
+    return out or [dict(x) for x in DEFAULT_FAQ_LINKS]
+
+
 def default_base_url():
     if os.environ.get("WORKBENCH_BASE_URL"):
         return os.environ["WORKBENCH_BASE_URL"]
@@ -107,8 +146,11 @@ def manifest_to_rich_manifest(manifest_path):
     m = json.loads(manifest_file.read_text(encoding="utf-8"))
     sections = []
     image_paths = []
+    last_subheading = ""
     for sec in m.get("sections", []):
         typ = normalize_section_type(sec.get("type"))
+        if typ == "subheading":
+            last_subheading = (sec.get("text") or "").strip()
         if typ == "copy_file":
             # 按空行拆成多段，每段一个 body section。飞书 markdown convert 对一段
             # 多段落文本会乱序（实测首段会被挪到末尾），拆成每段单独 convert 成单 block，
@@ -123,7 +165,15 @@ def manifest_to_rich_manifest(manifest_path):
             sections.append({"type": "image", "path": path, "caption": sec.get("caption", "")})
             if path:
                 image_paths.append(path)
-        elif typ in {"heading", "subheading", "body", "params", "separator", "link_list"}:
+        elif typ == "link_list":
+            # items 留空自动补 7 条默认 FAQ 链接；手填的逐条归一成 {label:标题, url}。
+            sections.append({"type": "link_list", "items": faq_link_items(sec)})
+        elif typ in {"heading", "subheading", "body", "params", "separator"}:
+            # 兜底：FAQ 误写成 body 且含裸飞书 /docx/ 长链接时，归一成 link_list 默认清单，
+            # 避免飞书把裸 URL 当纯文本渲染成长链接（用户反馈的坑）。
+            if typ == "body" and "销售常见问题" in last_subheading and "feishu.cn/docx/" in (sec.get("text") or ""):
+                sections.append({"type": "link_list", "items": [dict(x) for x in DEFAULT_FAQ_LINKS]})
+                continue
             out = {"type": typ}
             for key in ("text", "caption", "path", "items"):
                 if key in sec:
