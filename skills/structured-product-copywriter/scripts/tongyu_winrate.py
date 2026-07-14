@@ -382,7 +382,7 @@ def set_by_label_typing(page, label, value):
 
 def set_knock_in(page, value):
     """敲入价 label 是动态'敲入价应小于敲出价X'，按父级文本前缀'敲入价'定位 input，逐字输入。
-    填写逻辑：敲入价 = 期末障碍价 - 0.1（锁盈类；使敲入价 < 末次观察敲出价=降落伞 满足表单约束）。"""
+    填写逻辑：敲入价 硬性=1（产品不设敲入价，设1最贴近实际；满足敲入价<末次观察敲出价约束）。"""
     inp = page.evaluate_handle(
         """() => {
           const ins = Array.from(document.querySelectorAll('input'));
@@ -523,6 +523,29 @@ def run(args):
         print("[winrate_pending] ~/.claude/tongyu-creds.json not found")
         return
 
+    _ws_info = []
+    def _on_ws(ws):
+        try:
+            _ws_info.append({'open': ws.url})
+            def _on_recv(payload):
+                try:
+                    s = str(payload)
+                    if any(k in s for k in ('胜率','winrate','敲出','敲入','合约','profit','rate','盈利','亏损','90','9','data')):
+                        _ws_info.append({'recv': s[:600]})
+                except Exception:
+                    pass
+            ws.on("framereceived", _on_recv)
+            def _on_sent(payload):
+                try:
+                    s = str(payload)
+                    if any(k in s for k in ('分析','回测','winrate','backtest','analyze','calc','snowball','compute','data')):
+                        _ws_info.append({'sent': s[:600]})
+                except Exception:
+                    pass
+            ws.on("framesent", _on_sent)
+        except Exception:
+            pass
+
     with sync_playwright() as pw:
         ctx = pw.chromium.launch_persistent_context(
             PROFILE_DIR,
@@ -533,6 +556,7 @@ def run(args):
         ctx.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         try:
             page = ctx.new_page()
+            page.on("websocket", _on_ws)
             page.goto(f"{BASE}/#/login", wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(5000)
             if "/#/login" in page.url and page.locator(f'input[placeholder*="{TEXT["username"]}"]').count() > 0:
@@ -589,18 +613,17 @@ def run(args):
             # 末次观察敲出价二次覆盖（first_ko/step 联动可能重置回 85）。
             page.wait_for_timeout(300)
             print(set_by_label(page, TEXT["last_ko"], args.parachute))
-            # 期末障碍价 = 降落伞（.fill() 回弹/清空，改逐字输入）；锁盈类敲入价 = 期末障碍价 - 0.1（满足敲入价<末次观察敲出价约束）
-            page.wait_for_timeout(200)
-            print(set_by_label_typing(page, TEXT["terminal_barrier"], args.parachute))
+            # 敲入价=1（硬性，产品不设敲入价）；期末障碍价=降落伞=68。表单 敲入价→期末障碍价 联动，
+            # 先设敲入价=1、最后设期末障碍价=68 覆盖（若联动单向，期末障碍价=68+敲入价=1 可成分开）。
             if is_seg_coupon:
                 page.wait_for_timeout(200)
-                print(set_knock_in(page, int(args.parachute - 1)))
+                print(set_knock_in(page, 1))
             page.wait_for_timeout(200)
-            # 二次覆盖（自动联动可能重置）
             print(set_by_label_typing(page, TEXT["terminal_barrier"], args.parachute))
+            page.wait_for_timeout(200)
+            # 二次覆盖：末次观察敲出价=68、期末障碍价=68（放最后覆盖敲入价联动，不再动敲入价）
             print(set_by_label(page, TEXT["last_ko"], args.parachute))
-            if is_seg_coupon:
-                print(set_knock_in(page, int(args.parachute - 1)))
+            print(set_by_label_typing(page, TEXT["terminal_barrier"], args.parachute))
             if getattr(args, "inspect_form", False):
                 inspect_form_structure(page)
                 return
@@ -620,13 +643,52 @@ def run(args):
                 page.wait_for_timeout(150)
             print(set_backtest_range(page))
             page.wait_for_timeout(300)
+            import json as _json2
+            _reqs = []
+            _haina_resps = []
+            _haina_reqs = []
+            def _on_req(_req):
+                try:
+                    _reqs.append(_req.method + ' ' + _req.url)
+                    if 'haina' in (_req.url or '').lower():
+                        body = ''
+                        try:
+                            body = (_req.post_data or '')[:600]
+                        except Exception:
+                            body = '<body-unreadable>'
+                        _haina_reqs.append({'method': _req.method, 'url': _req.url, 'body': body})
+                except Exception:
+                    pass
+            def _on_resp(_resp):
+                try:
+                    if 'haina' in (_resp.url or '').lower():
+                        body = ''
+                        try:
+                            body = _resp.text()[:400]
+                        except Exception:
+                            body = '<body-unreadable>'
+                        _haina_resps.append({'status': _resp.status, 'url': _resp.url, 'body': body})
+                except Exception:
+                    pass
+            page.on("request", _on_req)
+            page.on("response", _on_resp)
             try:
                 page.locator("button:has-text('立即分析')").first.click(timeout=5000)
                 print("analyze button clicked (button locator)")
             except Exception as e:
                 print(f"analyze button locator failed: {e}; fallback click_exact_text")
                 click_exact_text(page, TEXT["analyze"])
-            page.wait_for_timeout(25000)
+            page.wait_for_timeout(45000)
+            try:
+                page.remove_listener("request", _on_req)
+                page.remove_listener("response", _on_resp)
+            except Exception:
+                pass
+            _api_reqs = [u for u in _reqs if any(k in u.lower() for k in ('/api/','analy','backtest','winrate','calc','snowball','struct','quant','compute','haina','ws','socket'))][:25]
+            print(f"analyze network reqs ({len(_reqs)} total, {len(_api_reqs)} api-like):", _json2.dumps(_api_reqs, ensure_ascii=False)[:1500])
+            print("haina request:", _json2.dumps(_haina_reqs, ensure_ascii=False)[:1200])
+            print("haina responses:", _json2.dumps(_haina_resps, ensure_ascii=False)[:1200])
+            print("websocket info (early-listener):", _json2.dumps(_ws_info, ensure_ascii=False)[:2000])
             # 诊断：立即分析是否触发了重算（按钮状态/胜率卡/加载指示/错误toast）
             print("post-analyze:", page.evaluate(
                 """() => {
