@@ -35,10 +35,10 @@ TEXT = {
     "analyze": zh(r"\u7acb\u5373\u5206\u6790"),
     "date_range": zh(r"\u56de\u6d4b\u533a\u95f4"),
     "winrate": "\u80dc\u7387",
-    "early": "\u65e9\u5229",
-    "classic": "\u7ecf\u5178",
-    "phoenix": "\u51e4\u51f0",
-    "butterfly": "\u8776\u53d8",
+    "early": "\u65e9\u5229\u7ed3\u6784",
+    "classic": "\u7ecf\u5178\u7ed3\u6784",
+    "phoenix": "\u51e4\u51f0\u7ed3\u6784",
+    "butterfly": "\u8776\u53d8\u7ed3\u6784",
     "single_struct": "\u5355\u4e00\u7ed3\u6784",
     "fcn": "FCN",
 }
@@ -267,6 +267,52 @@ def click_single_structure_fcn(page):
     return res
 
 
+def inspect_form_structure(page):
+    """诊断：dump 胜率回测表单结构选择区的真实 DOM，定位早利/经典等结构卡片与单一/组合结构模式切换的真实选择器。"""
+    print("=== INSPECT: structure-selection DOM (text matches 早利/经典/凤凰/蝶变/DCN/单一结构/组合结构/基础结构) ===")
+    hits = page.evaluate(
+        """() => {
+          const kws = ['早利','经典','凤凰','蝶变','DCN','单一结构','组合结构','基础结构'];
+          const all = Array.from(document.querySelectorAll('body *'));
+          const hits = all.filter(e => {
+            const t = (e.textContent||'').trim();
+            if (!t || t.length > 30) return false;
+            return kws.some(k => t.includes(k));
+          });
+          return hits.map(e => {
+            const r = e.getBoundingClientRect();
+            const cs = getComputedStyle(e);
+            const cn = (e.className && e.className.toString) ? e.className.toString() : '';
+            return {
+              tag: e.tagName.toLowerCase(),
+              cls: cn.slice(0,60),
+              text: (e.textContent||'').trim().slice(0,30),
+              cursor: cs.cursor,
+              onclick: !!e.onclick,
+              isInput: e.tagName==='INPUT',
+              inputType: e.tagName==='INPUT' ? (e.type||'') : '',
+              name: e.name||'',
+              value: e.tagName==='INPUT' ? String(e.value).slice(0,15) : '',
+              checked: e.checked===true,
+              rect: [Math.round(r.x),Math.round(r.y),Math.round(r.width),Math.round(r.height)],
+              parentCls: (e.parentElement && e.parentElement.className && e.parentElement.className.toString) ? e.parentElement.className.toString().slice(0,40) : '',
+            };
+          });
+        }"""
+    )
+    for i, h in enumerate(hits or []):
+        print(f"  [{i}] {h}")
+    print("=== container outerHTML (first '组合结构' container, <=80 descendants) ===")
+    html = page.evaluate(
+        """() => {
+          const all = Array.from(document.querySelectorAll('body *'));
+          const c = all.find(e => (e.textContent||'').includes('组合结构') && e.querySelectorAll('*').length < 80);
+          return c ? c.outerHTML.slice(0,3000) : 'NOTFOUND';
+        }"""
+    )
+    print(html)
+
+
 def result_screenshot_box(page):
     return page.evaluate(
         """() => {
@@ -364,6 +410,9 @@ def run(args):
             for _ in range(3):
                 page.evaluate("() => { document.querySelectorAll('.fast-refer-to-quotation-modal, .ant-modal-mask').forEach(e => e.remove()); }")
                 page.wait_for_timeout(300)
+            if getattr(args, "inspect_form", False):
+                inspect_form_structure(page)
+                return
             structure = (args.structure or "DCN").strip()
             base = resolve_base_structure(structure, args)  # → 经典/凤凰/早利/蝶变/DCN
             is_seg_coupon = (base != "DCN")  # 非DCN(锁盈类)用分段敲出票息字段
@@ -398,6 +447,9 @@ def run(args):
             # 末次观察敲出价二次覆盖（first_ko/step 联动可能把它重置回 85）。
             page.wait_for_timeout(300)
             print(set_by_label(page, TEXT["last_ko"], args.parachute))
+            # 期末障碍价二次覆盖（自动联动可能把它重置回默认 80，要=降落伞）。
+            page.wait_for_timeout(200)
+            print(set_by_label(page, TEXT["terminal_barrier"], args.parachute))
             if is_seg_coupon:
                 # 锁盈类(早利/经典)敲出票息按区间填（早利如 3-18M 33%、19-36M 0.75%；经典前后一致填等值）。字段名随终端版本变，
                 # 用候选 label 逐个试；填不上的 dump_form 会显示真实 label 供迭代。
@@ -489,6 +541,7 @@ def main():
     parser.add_argument("--output", required=True)
     parser.add_argument("--headed", action="store_true")
     parser.add_argument("--dump-form-only", action="store_true", help="锁盈类(早利/经典)：填完公共字段+dump表单后停在「立即分析」前，用于学习字段名")
+    parser.add_argument("--inspect-form", action="store_true", help="诊断：登录+导航到回测表单后dump结构选择区DOM再退出，用于定位早利/经典等结构卡片真实选择器")
     run(parser.parse_args())
 
 
