@@ -79,21 +79,17 @@ def set_backtest_range(page):
         }""",
         {"start": start_s, "end": end_s},
     )
-    # 结束日 best-effort 点 picker「今天」加固（DOM click 未必唤出 antd picker，warn 兜底）
+    # 结束日：Playwright 真实 click 唤出 antd picker 面板，再点「今天」按钮(.ant-picker-today-btn)；DOM click 唤不出 readOnly picker 面板
     try:
-        page.evaluate(
-            """() => {
-              const all=Array.from(document.querySelectorAll('input'));
-              const re = all.find(i => /结束|End/i.test(i.placeholder||'')) || (all[1]||null);
-              if (re) re.click();
-            }"""
-        )
-        page.wait_for_timeout(300)
-        page.evaluate(
-            """() => { const t=Array.from(document.querySelectorAll('*')).find(e=>e.children.length===0 && (e.textContent||'').trim()==='今天'); if(t){t.click();} }"""
-        )
-    except Exception:
-        pass
+        end_inp = page.locator("input[placeholder*='结束'], input[placeholder*='End']").first
+        end_inp.click()
+        page.wait_for_timeout(800)
+        today_btn = page.locator(".ant-picker-today-btn, a:has-text('今天'), button:has-text('今天'), li:has-text('今天')").first
+        today_btn.click(timeout=2000)
+        page.wait_for_timeout(500)
+        print("end-date 今天 clicked")
+    except Exception as e:
+        print(f"end-date 今天 click failed: {e}")
     # 关掉可能弹出的 picker 面板，避免遮挡「立即分析」按钮。
     try:
         page.keyboard.press("Escape")
@@ -344,6 +340,82 @@ def inspect_form_structure(page):
     print(dt)
 
 
+def set_by_label_typing(page, label, value):
+    """对 .fill() 不生效(回弹/清空)的 antd InputNumber，改用 click→Ctrl+A 全选→pressSequentially 逐字输入→Tab。
+    定位逻辑同 set_by_label（label 文本→上溯找 input）。"""
+    inp = page.evaluate_handle(
+        """(lbl) => {
+          let el = null;
+          for (const e of Array.from(document.querySelectorAll('div,span,label'))) {
+            if (e.textContent.trim() === lbl) { el = e; break; }
+          }
+          if (!el) return null;
+          let c = el;
+          for (let i = 0; i < 6; i++) {
+            c = c.parentElement;
+            if (!c) break;
+            const inp = c.querySelector('input');
+            if (inp) return inp;
+          }
+          return null;
+        }""",
+        label,
+    )
+    el = inp.as_element()
+    if not el:
+        return f"{label}: NOTFOUND"
+    try:
+        el.click()
+        try:
+            el.press("Control+a")
+        except Exception:
+            pass
+        el.type(str(value), delay=30)
+        try:
+            el.press("Tab")
+        except Exception:
+            pass
+        return f"{label}: {el.input_value()}"
+    except Exception as e:
+        return f"{label}: NOINPUT ({e})"
+
+
+def set_knock_in(page, value):
+    """敲入价 label 是动态'敲入价应小于敲出价X'，按父级文本前缀'敲入价'定位 input，逐字输入。
+    填写逻辑：敲入价 = 期末障碍价 = 降落伞。"""
+    inp = page.evaluate_handle(
+        """() => {
+          const ins = Array.from(document.querySelectorAll('input'));
+          return ins.find(i => {
+            let c = i;
+            for (let k=0;k<6;k++){
+              c = c.parentElement;
+              if (!c) break;
+              if (((c.textContent)||'').trim().startsWith('敲入价')) return true;
+            }
+            return false;
+          }) || null;
+        }"""
+    )
+    el = inp.as_element()
+    if not el:
+        return "敲入价: NOTFOUND"
+    try:
+        el.click()
+        try:
+            el.press("Control+a")
+        except Exception:
+            pass
+        el.type(str(value), delay=30)
+        try:
+            el.press("Tab")
+        except Exception:
+            pass
+        return f"敲入价: {el.input_value()}"
+    except Exception as e:
+        return f"敲入价: NOINPUT ({e})"
+
+
 def fill_split_coupon(page, args):
     """早利/蝶变分段票息：.split-coupon-wrap 容器内 input 按 DOM 顺序填
     [区间1起, 区间1止, 区间1票息, 区间2起, 区间2止, 区间2票息]。
@@ -506,19 +578,29 @@ def run(args):
                 (TEXT["first_ko"], args.ko),
                 (TEXT["ko_step"], args.step_down),
                 (TEXT["terminal_barrier"], args.parachute),
-                (TEXT["last_ko"], args.parachute),
             ]
+            # 末次观察敲出价：DCN 填=降落伞(覆盖默认85)；锁盈类(早利/经典)留默认 stepped knock-out 85，
+            # 使敲入价(=降落伞68) < 末次观察敲出价(85) 满足表单"敲入价应小于敲出价"约束——否则表单非法、"立即分析"不重算(实测 winrate 卡在旧值)。
+            if not is_seg_coupon:
+                common_fields.append((TEXT["last_ko"], args.parachute))
             for label, value in common_fields:
                 print(set_by_label(page, label, value))
                 page.wait_for_timeout(200)
             if args.lock != 3:
                 print(set_by_label(page, TEXT["lock"], args.lock))
-            # 末次观察敲出价二次覆盖（first_ko/step 联动可能把它重置回 85）。
-            page.wait_for_timeout(300)
-            print(set_by_label(page, TEXT["last_ko"], args.parachute))
-            # 期末障碍价二次覆盖（自动联动可能把它重置回默认 80，要=降落伞）。
+            # 末次观察敲出价二次覆盖（仅 DCN；锁盈类留默认 stepped knock-out 85 以满足敲入价<敲出价约束）。
+            if not is_seg_coupon:
+                page.wait_for_timeout(300)
+                print(set_by_label(page, TEXT["last_ko"], args.parachute))
+            # 敲入价 = 期末障碍价 = 降落伞（.fill() 在这两个字段回弹/清空，改逐字输入；先敲入价后期末障碍价，二者联动）
             page.wait_for_timeout(200)
-            print(set_by_label(page, TEXT["terminal_barrier"], args.parachute))
+            print(set_knock_in(page, args.parachute))
+            page.wait_for_timeout(200)
+            print(set_by_label_typing(page, TEXT["terminal_barrier"], args.parachute))
+            page.wait_for_timeout(200)
+            # 二次覆盖（自动联动可能重置回默认 80）
+            print(set_knock_in(page, args.parachute))
+            print(set_by_label_typing(page, TEXT["terminal_barrier"], args.parachute))
             if getattr(args, "inspect_form", False):
                 inspect_form_structure(page)
                 return
@@ -538,8 +620,24 @@ def run(args):
                 page.wait_for_timeout(150)
             print(set_backtest_range(page))
             page.wait_for_timeout(300)
-            click_exact_text(page, TEXT["analyze"])
-            page.wait_for_timeout(8000)
+            try:
+                page.locator("button:has-text('立即分析')").first.click(timeout=5000)
+                print("analyze button clicked (button locator)")
+            except Exception as e:
+                print(f"analyze button locator failed: {e}; fallback click_exact_text")
+                click_exact_text(page, TEXT["analyze"])
+            page.wait_for_timeout(25000)
+            # 诊断：立即分析是否触发了重算（按钮状态/胜率卡/加载指示/错误toast）
+            print("post-analyze:", page.evaluate(
+                """() => {
+                  const btn = Array.from(document.querySelectorAll('*')).find(e => e.children.length===0 && (e.textContent||'').trim()==='立即分析');
+                  const wr = Array.from(document.querySelectorAll('*')).find(e => e.children.length===0 && (e.textContent||'').trim()==='胜率');
+                  const errs = Array.from(document.querySelectorAll('.ant-message-error, .ant-message-notice-content, .ant-form-item-explain-error, .ant-notification-notice-message, .ant-message-notice')).slice(0,10).map(e=>(e.textContent||'').trim().slice(0,100));
+                  // 结果区文本（胜率/已完结合约/平均敲出时间 所在容器）
+                  const rc = Array.from(document.querySelectorAll('*')).find(e => (e.textContent||'').includes('已完结合约') && e.querySelectorAll('*').length < 60);
+                  return {btnDisabled: btn?btn.disabled:'nobtn', winrateParent: wr?(wr.parentElement.textContent||'').trim().slice(0,40):'', errors: errs, resultArea: rc?(rc.textContent||'').trim().slice(0,200):'no-result-area'};
+                }"""
+            ))
             read_label = """(label) => {
               const el = Array.from(document.querySelectorAll('*')).find(e => e.children.length === 0 && e.textContent.trim() === label);
               return el ? el.parentElement.textContent.replace(label, '').trim() : null;
