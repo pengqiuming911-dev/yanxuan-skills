@@ -311,6 +311,78 @@ def inspect_form_structure(page):
         }"""
     )
     print(html)
+    print("=== coupon-section container (contains 'M至', 4-8 inputs) + its inputs ===")
+    coupon = page.evaluate(
+        """() => {
+          const all = Array.from(document.querySelectorAll('body *'));
+          const c = all.find(e => (e.textContent||'').includes('M至') && e.querySelectorAll('input').length>=4 && e.querySelectorAll('input').length<=8);
+          if (!c) return 'NOTFOUND';
+          const ins = Array.from(c.querySelectorAll('input')).map((inp,i) => ({i, ph:inp.placeholder||'', value:inp.value, disabled:inp.disabled, readOnly:inp.readOnly, type:inp.type||'', parentText:(inp.parentElement&&inp.parentElement.textContent||'').trim().slice(0,20)}));
+          return {inputs: ins, html: c.outerHTML.slice(0,2000)};
+        }"""
+    )
+    print(coupon)
+    print("=== 期末障碍价 input detail ===")
+    tb = page.evaluate(
+        """() => {
+          const ins = Array.from(document.querySelectorAll('input'));
+          const t = ins.find(i => ((i.parentElement&&i.parentElement.textContent)||'').includes('期末障碍价'));
+          if (!t) return 'NOTFOUND';
+          return {value:t.value, disabled:t.disabled, readOnly:t.readOnly, type:t.type, parentText:(t.parentElement.textContent||'').trim().slice(0,40), parentHTML:(t.parentElement.outerHTML||'').slice(0,400)};
+        }"""
+    )
+    print(tb)
+    print("=== date picker (开始/结束日期 + 今天 btn) ===")
+    dt = page.evaluate(
+        """() => {
+          const ins = Array.from(document.querySelectorAll('input'));
+          const dates = ins.filter(i => /日期|开始|结束/.test(i.placeholder||'')).map(i => ({ph:i.placeholder, value:i.value, disabled:i.disabled, readOnly:i.readOnly}));
+          const today = Array.from(document.querySelectorAll('*')).find(e => e.children.length===0 && (e.textContent||'').trim()==='今天');
+          return {dates, todayBtn: today ? {tag:today.tagName.toLowerCase(), cls:(today.className||'').toString().slice(0,40), display:getComputedStyle(today).display, parentCls:((today.parentElement||{}).className||'').toString().slice(0,40)} : 'NOTFOUND'};
+        }"""
+    )
+    print(dt)
+
+
+def fill_split_coupon(page, args):
+    """早利/蝶变分段票息：.split-coupon-wrap 容器内 input 按 DOM 顺序填
+    [区间1起, 区间1止, 区间1票息, 区间2起, 区间2止, 区间2票息]。
+
+    label 是通用"M至"/"%"(3个%无法按label区分区间1/2)，只能按容器内位置填。
+    区间1票息字段可能是 disabled "待计算"(自动算)，跳过；区间2票息可填。"""
+    wrap = page.locator(".split-coupon-wrap, .coupon-list").first
+    try:
+        count = wrap.locator("input").count()
+    except Exception:
+        print("split_coupon: NO_WRAP")
+        return
+    vals = [args.rate1_start, args.rate1_end, args.rate1, args.rate2_start, args.rate2_end, args.rate2]
+    results = []
+    for i, v in enumerate(vals):
+        if i >= count:
+            break
+        inp = wrap.locator("input").nth(i)
+        try:
+            disabled = inp.evaluate("e => e.disabled || e.readOnly")
+        except Exception:
+            disabled = True
+        if disabled:
+            results.append(f"i{i}:SKIP(disabled)")
+            continue
+        try:
+            inp.click()
+            page.wait_for_timeout(100)
+            inp.fill(str(v))
+            try:
+                inp.press("Tab")
+            except Exception:
+                pass
+            val = inp.input_value()
+            results.append(f"i{i}:{val}")
+        except Exception as e:
+            results.append(f"i{i}:ERR({e})")
+    print(f"split_coupon: count={count} " + " | ".join(results))
+    page.wait_for_timeout(300)
 
 
 def result_screenshot_box(page):
@@ -410,9 +482,6 @@ def run(args):
             for _ in range(3):
                 page.evaluate("() => { document.querySelectorAll('.fast-refer-to-quotation-modal, .ant-modal-mask').forEach(e => e.remove()); }")
                 page.wait_for_timeout(300)
-            if getattr(args, "inspect_form", False):
-                inspect_form_structure(page)
-                return
             structure = (args.structure or "DCN").strip()
             base = resolve_base_structure(structure, args)  # → 经典/凤凰/早利/蝶变/DCN
             is_seg_coupon = (base != "DCN")  # 非DCN(锁盈类)用分段敲出票息字段
@@ -450,19 +519,13 @@ def run(args):
             # 期末障碍价二次覆盖（自动联动可能把它重置回默认 80，要=降落伞）。
             page.wait_for_timeout(200)
             print(set_by_label(page, TEXT["terminal_barrier"], args.parachute))
+            if getattr(args, "inspect_form", False):
+                inspect_form_structure(page)
+                return
             if is_seg_coupon:
-                # 锁盈类(早利/经典)敲出票息按区间填（早利如 3-18M 33%、19-36M 0.75%；经典前后一致填等值）。字段名随终端版本变，
-                # 用候选 label 逐个试；填不上的 dump_form 会显示真实 label 供迭代。
-                for name, cands, val in [
-                    ("rate1_start", ["区间1开始", "票息区间1开始", "早利区间1开始", "区间1起始", "敲出票息1开始"], args.rate1_start),
-                    ("rate1_end",   ["区间1结束", "票息区间1结束", "早利区间1结束", "区间1终止", "敲出票息1结束"], args.rate1_end),
-                    ("rate1",       ["区间1票息", "区间1票息率", "票息区间1", "早利票息1", "敲出票息1", "票息1"], args.rate1),
-                    ("rate2_start", ["区间2开始", "票息区间2开始", "早利区间2开始", "区间2起始", "敲出票息2开始"], args.rate2_start),
-                    ("rate2_end",   ["区间2结束", "票息区间2结束", "早利区间2结束", "区间2终止", "敲出票息2结束"], args.rate2_end),
-                    ("rate2",       ["区间2票息", "区间2票息率", "票息区间2", "早利票息2", "敲出票息2", "票息2"], args.rate2),
-                ]:
-                    print(set_by_label_candidates(page, cands, val))
-                    page.wait_for_timeout(150)
+                # .split-coupon-wrap 容器内按 DOM 顺序填区间起止+票息（label 是通用"M至"/"%"无法按label区分区间1/2，按位置填）。
+                # 注：区间1票息字段可能 disabled "待计算"(自动算)，会被跳过——此时 33% 需另寻主字段，见 dump_form。
+                fill_split_coupon(page, args)
                 dump_form(page)
                 if args.dump_form_only:
                     print("[dump_form_only] 表单已填+已dump，停在「立即分析」前。读上方 form dump 学字段名后，去掉 --dump-form-only 重跑。")
