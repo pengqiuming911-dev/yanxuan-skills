@@ -678,6 +678,13 @@ def run(args):
             except Exception as e:
                 print(f"analyze button locator failed: {e}; fallback click_exact_text")
                 click_exact_text(page, TEXT["analyze"])
+            page.wait_for_timeout(3000)
+            # type=submit 点击只触发埋点onClick; 试 form.requestSubmit() 直接触发表单 onSubmit(回测)
+            try:
+                page.evaluate("() => { const f = document.querySelector('form'); if (f) { try { f.requestSubmit(); } catch(e) { try { f.submit(); } catch(e2){} } } }")
+                print("form.requestSubmit() called")
+            except Exception as e:
+                print(f"form.requestSubmit failed: {e}")
             page.wait_for_timeout(45000)
             try:
                 page.remove_listener("request", _on_req)
@@ -697,7 +704,7 @@ def run(args):
                   const errs = Array.from(document.querySelectorAll('.ant-message-error, .ant-message-notice-content, .ant-form-item-explain-error, .ant-notification-notice-message, .ant-message-notice')).slice(0,10).map(e=>(e.textContent||'').trim().slice(0,100));
                   // 结果区文本（胜率/已完结合约/平均敲出时间 所在容器）
                   const rc = Array.from(document.querySelectorAll('*')).find(e => (e.textContent||'').includes('已完结合约') && e.querySelectorAll('*').length < 60);
-                  return {btnDisabled: btn?btn.disabled:'nobtn', winrateParent: wr?(wr.parentElement.textContent||'').trim().slice(0,40):'', errors: errs, resultArea: rc?(rc.textContent||'').trim().slice(0,200):'no-result-area'};
+                  return {btnDisabled: btn?btn.disabled:'nobtn', winrateParent: wr?(wr.parentElement.textContent||'').trim().slice(0,40):'', errors: errs, resultArea: rc?(rc.textContent||'').trim().slice(0,200):'no-result-area', buttons: Array.from(document.querySelectorAll('button')).map(b=>({text:(b.textContent||'').trim().slice(0,20), disabled:b.disabled, type:b.type||''})).filter(b=>b.text)};
                 }"""
             ))
             read_label = """(label) => {
