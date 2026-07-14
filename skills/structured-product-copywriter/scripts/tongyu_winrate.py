@@ -87,14 +87,18 @@ def set_backtest_range(page):
         today_cell.wait_for(state="visible", timeout=5000)
         today_cell.click()
         page.wait_for_timeout(800)
+        try:
+            # 切换焦点到开始日期输入框——antd RangePicker 切字段会提交已选的 end(Escape取消、Enter/外部点击无效)
+            page.locator("input[placeholder*='开始'], input[placeholder*='Start']").first.click()
+        except Exception:
+            pass
+        page.wait_for_timeout(500)
+        _dv = page.evaluate("() => Array.from(document.querySelectorAll('input')).filter(i=>/日期|开始|结束/.test(i.placeholder||'')).map(i=>({ph:i.placeholder,value:i.value}))")
+        print("date values after today-cell click:", _dv)
         print("end-date today-cell clicked")
     except Exception as e:
         print(f"end-date today click failed: {e}")
-    # 关掉可能弹出的 picker 面板，避免遮挡「立即分析」按钮。
-    try:
-        page.keyboard.press("Escape")
-    except Exception:
-        pass
+    # 不按 Escape——会取消刚选的今天(实测选完 end=今天,Escape 后被还原成默认)。RangePicker 选完 end 会自动关闭。
     return f"backtest_range best-effort(start={start_s}, end={end_s}): {res}"
 
 
@@ -444,7 +448,11 @@ def fill_split_coupon(page, args):
         try:
             inp.click()
             page.wait_for_timeout(100)
-            inp.fill(str(v))
+            try:
+                inp.press("Control+a")
+            except Exception:
+                pass
+            inp.press_sequentially(str(v), delay=50)
             try:
                 inp.press("Tab")
             except Exception:
@@ -606,13 +614,13 @@ def run(args):
                 (TEXT["last_ko"], args.parachute),
             ]
             for label, value in common_fields:
-                print(set_by_label(page, label, value))
-                page.wait_for_timeout(200)
+                print(set_by_label_typing(page, label, value))
+                page.wait_for_timeout(300)
             if args.lock != 3:
-                print(set_by_label(page, TEXT["lock"], args.lock))
+                print(set_by_label_typing(page, TEXT["lock"], args.lock))
             # 末次观察敲出价二次覆盖（first_ko/step 联动可能重置回 85）。
             page.wait_for_timeout(300)
-            print(set_by_label(page, TEXT["last_ko"], args.parachute))
+            print(set_by_label_typing(page, TEXT["last_ko"], args.parachute))
             # 敲入价=1（硬性，产品不设敲入价）；期末障碍价=降落伞=68。表单 敲入价→期末障碍价 联动，
             # 先设敲入价=1、最后设期末障碍价=68 覆盖（若联动单向，期末障碍价=68+敲入价=1 可成分开）。
             if is_seg_coupon:
@@ -622,7 +630,7 @@ def run(args):
             print(set_by_label_typing(page, TEXT["terminal_barrier"], args.parachute))
             page.wait_for_timeout(200)
             # 二次覆盖：末次观察敲出价=68、期末障碍价=68（放最后覆盖敲入价联动，不再动敲入价）
-            print(set_by_label(page, TEXT["last_ko"], args.parachute))
+            print(set_by_label_typing(page, TEXT["last_ko"], args.parachute))
             print(set_by_label_typing(page, TEXT["terminal_barrier"], args.parachute))
             if getattr(args, "inspect_form", False):
                 inspect_form_structure(page)
