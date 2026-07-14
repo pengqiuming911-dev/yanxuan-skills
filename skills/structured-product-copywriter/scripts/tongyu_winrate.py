@@ -79,17 +79,17 @@ def set_backtest_range(page):
         }""",
         {"start": start_s, "end": end_s},
     )
-    # 结束日：Playwright 真实 click 唤出 antd picker 面板，再点「今天」按钮(.ant-picker-today-btn)；DOM click 唤不出 readOnly picker 面板
+    # 结束日=今天：点结束日期 input 弹 antd RangePicker 面板（无"今天"按钮），点今天的日期单元格 .ant-picker-cell-today
     try:
         end_inp = page.locator("input[placeholder*='结束'], input[placeholder*='End']").first
         end_inp.click()
+        today_cell = page.locator(".ant-picker-cell-today").first
+        today_cell.wait_for(state="visible", timeout=5000)
+        today_cell.click()
         page.wait_for_timeout(800)
-        today_btn = page.locator(".ant-picker-today-btn, a:has-text('今天'), button:has-text('今天'), li:has-text('今天')").first
-        today_btn.click(timeout=2000)
-        page.wait_for_timeout(500)
-        print("end-date 今天 clicked")
+        print("end-date today-cell clicked")
     except Exception as e:
-        print(f"end-date 今天 click failed: {e}")
+        print(f"end-date today click failed: {e}")
     # 关掉可能弹出的 picker 面板，避免遮挡「立即分析」按钮。
     try:
         page.keyboard.press("Escape")
@@ -382,7 +382,7 @@ def set_by_label_typing(page, label, value):
 
 def set_knock_in(page, value):
     """敲入价 label 是动态'敲入价应小于敲出价X'，按父级文本前缀'敲入价'定位 input，逐字输入。
-    填写逻辑：敲入价 = 期末障碍价 = 降落伞。"""
+    填写逻辑：敲入价 = 期末障碍价 - 0.1（锁盈类；使敲入价 < 末次观察敲出价=降落伞 满足表单约束）。"""
     inp = page.evaluate_handle(
         """() => {
           const ins = Array.from(document.querySelectorAll('input'));
@@ -572,35 +572,35 @@ def run(args):
             click_exact_text(page, TEXT["no_margin_call"])
             page.wait_for_timeout(400)
             # 公共字段：期限/首次观察敲出价/敲出价递减步长先填(末次观察敲出价会随 first_ko+step 自动联动)，
-            # 再填期末障碍价/末次观察敲出价(=降落伞)覆盖自动联动的默认 85，末次观察敲出价放最后并二次覆盖。
+            # 再填期末障碍价/末次观察敲出价(=降落伞)覆盖自动联动的默认 85。
+            # 锁盈类规则(用户): 末次观察敲出价=期末障碍价=降落伞; 敲入价=期末障碍价-0.1(使敲入价<末次观察敲出价满足"敲入价应小于敲出价"约束)。
             common_fields = [
                 (TEXT["term"], args.term),
                 (TEXT["first_ko"], args.ko),
                 (TEXT["ko_step"], args.step_down),
                 (TEXT["terminal_barrier"], args.parachute),
+                (TEXT["last_ko"], args.parachute),
             ]
-            # 末次观察敲出价：DCN 填=降落伞(覆盖默认85)；锁盈类(早利/经典)留默认 stepped knock-out 85，
-            # 使敲入价(=降落伞68) < 末次观察敲出价(85) 满足表单"敲入价应小于敲出价"约束——否则表单非法、"立即分析"不重算(实测 winrate 卡在旧值)。
-            if not is_seg_coupon:
-                common_fields.append((TEXT["last_ko"], args.parachute))
             for label, value in common_fields:
                 print(set_by_label(page, label, value))
                 page.wait_for_timeout(200)
             if args.lock != 3:
                 print(set_by_label(page, TEXT["lock"], args.lock))
-            # 末次观察敲出价二次覆盖（仅 DCN；锁盈类留默认 stepped knock-out 85 以满足敲入价<敲出价约束）。
-            if not is_seg_coupon:
-                page.wait_for_timeout(300)
-                print(set_by_label(page, TEXT["last_ko"], args.parachute))
-            # 敲入价 = 期末障碍价 = 降落伞（.fill() 在这两个字段回弹/清空，改逐字输入；先敲入价后期末障碍价，二者联动）
-            page.wait_for_timeout(200)
-            print(set_knock_in(page, args.parachute))
+            # 末次观察敲出价二次覆盖（first_ko/step 联动可能重置回 85）。
+            page.wait_for_timeout(300)
+            print(set_by_label(page, TEXT["last_ko"], args.parachute))
+            # 期末障碍价 = 降落伞（.fill() 回弹/清空，改逐字输入）；锁盈类敲入价 = 期末障碍价 - 0.1（满足敲入价<末次观察敲出价约束）
             page.wait_for_timeout(200)
             print(set_by_label_typing(page, TEXT["terminal_barrier"], args.parachute))
+            if is_seg_coupon:
+                page.wait_for_timeout(200)
+                print(set_knock_in(page, int(args.parachute - 1)))
             page.wait_for_timeout(200)
-            # 二次覆盖（自动联动可能重置回默认 80）
-            print(set_knock_in(page, args.parachute))
+            # 二次覆盖（自动联动可能重置）
             print(set_by_label_typing(page, TEXT["terminal_barrier"], args.parachute))
+            print(set_by_label(page, TEXT["last_ko"], args.parachute))
+            if is_seg_coupon:
+                print(set_knock_in(page, int(args.parachute - 1)))
             if getattr(args, "inspect_form", False):
                 inspect_form_structure(page)
                 return
