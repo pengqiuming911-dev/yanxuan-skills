@@ -498,7 +498,7 @@ def generate_winrate_png(page, res, output, start_s, end_s):
           const old = document.getElementById('wr-card'); if (old) old.remove();
           const card = document.createElement('div');
           card.id = 'wr-card';
-          card.style.cssText = 'font-family:-apple-system,sans-serif;padding:28px;background:#fff;width:700px;position:fixed;top:0;left:0;z-index:99999;border:1px solid #e8e8e8;';
+          card.style.cssText = 'font-family:-apple-system,sans-serif;padding:32px;background:#fff;width:1200px;position:fixed;top:0;left:0;z-index:99999;border:1px solid #e8e8e8;';
           card.innerHTML = '<div style="font-size:14px;color:#999;">产品胜率数据</div>'
             + '<div style="font-size:52px;color:#d4380d;font-weight:bold;margin:8px 0;">' + d.wr + '</div>'
             + '<div style="font-size:13px;color:#666;margin-bottom:16px;">十年回测胜率（' + d.start + ' 至 ' + d.end + '）· 中证1000 · 2倍早利锁盈</div>'
