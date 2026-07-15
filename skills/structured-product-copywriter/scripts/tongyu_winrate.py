@@ -491,7 +491,7 @@ def direct_winrate(page, args):
         "endDate": today.isoformat(),
         "instrumentId": "000852.SH",
         "instrumentType": None,
-        "knockInBarrier": "1%",
+        "knockInBarrier": f"{args.parachute}%",
         "knockOutBarrier": f"{args.ko}%",
         "knockOutBarrierDecreaseStep": args.step_down / 100.0,
         "knockOutCouponRateListByTenor": coupon_list,
@@ -772,7 +772,7 @@ def run(args):
             # 先设敲入价=1、最后设期末障碍价=68 覆盖（若联动单向，期末障碍价=68+敲入价=1 可成分开）。
             if is_seg_coupon:
                 page.wait_for_timeout(200)
-                print(set_knock_in(page, 1))
+                print(set_knock_in(page, args.parachute))
             page.wait_for_timeout(200)
             print(set_terminal_barrier(page, args.parachute))
             page.wait_for_timeout(200)
