@@ -79,22 +79,33 @@ def set_backtest_range(page):
         }""",
         {"start": start_s, "end": end_s},
     )
-    # 结束日=今天：点结束日期 input 弹 antd RangePicker 面板（无"今天"按钮），点今天的日期单元格 .ant-picker-cell-today
+    # 结束日=今天：RangePicker 必须【重选 start+end 双选】才提交(单选 end 会回退→winrate URL 日期 undefined→TypeError)。
+    # start=今天-10y(左面板 today.day 那天)，end=今天(右面板 .ant-picker-cell-today)。用户手动即此法(实测单选 end 失败、双选成功)。
     try:
-        end_inp = page.locator("input[placeholder*='结束'], input[placeholder*='End']").first
-        end_inp.click()
+        day = date.today().day
+        start_inp = page.locator("input[placeholder*='开始'], input[placeholder*='Start']").first
+        start_inp.click()
+        page.wait_for_timeout(800)
+        sr = page.evaluate(
+            """(d) => {
+              const panels = document.querySelectorAll('.ant-picker-panels .ant-picker-panel');
+              const sp = panels[0];
+              if (!sp) return 'no-start-panel';
+              const cells = sp.querySelectorAll('td.ant-picker-cell');
+              const c = Array.from(cells).find(x => (x.textContent||'').trim() === String(d));
+              if (c) { c.click(); return 'start-clicked-'+d; }
+              return 'no-cell-'+d;
+            }""",
+            day,
+        )
+        print("start-cell:", sr)
+        page.wait_for_timeout(800)
         today_cell = page.locator(".ant-picker-cell-today").first
         today_cell.wait_for(state="visible", timeout=5000)
         today_cell.click()
         page.wait_for_timeout(800)
-        try:
-            # 切换焦点到开始日期输入框——antd RangePicker 切字段会提交已选的 end(Escape取消、Enter/外部点击无效)
-            page.locator("input[placeholder*='开始'], input[placeholder*='Start']").first.click()
-        except Exception:
-            pass
-        page.wait_for_timeout(500)
         _dv = page.evaluate("() => Array.from(document.querySelectorAll('input')).filter(i=>/日期|开始|结束/.test(i.placeholder||'')).map(i=>({ph:i.placeholder,value:i.value}))")
-        print("date values after today-cell click:", _dv)
+        print("date values after pick:", _dv)
         print("end-date today-cell clicked")
     except Exception as e:
         print(f"end-date today click failed: {e}")
@@ -716,12 +727,17 @@ def run(args):
                 try:
                     _reqs.append(_req.method + ' ' + _req.url)
                     if 'haina' in (_req.url or '').lower():
-                        body = ''
+                        raw = _req.post_data or ''
+                        import urllib.parse as _up, base64 as _b64
                         try:
-                            body = (_req.post_data or '')[:600]
-                        except Exception:
-                            body = '<body-unreadable>'
-                        _haina_reqs.append({'method': _req.method, 'url': _req.url, 'body': body})
+                            qs = _up.parse_qs(raw)
+                            b64 = (qs.get('data', [None])[0]) or ''
+                            decoded = _b64.b64decode(b64).decode('utf-8', 'ignore') if b64 else ''
+                            ev = _json2.loads(decoded) if decoded else {}
+                            if ev.get('event') == 'analyseClick':
+                                _haina_reqs.append({'event': ev.get('event'), 'props': ev.get('properties', {})})
+                        except Exception as e:
+                            _haina_reqs.append({'raw': raw[:400], 'decode_err': str(e)})
                 except Exception:
                     pass
             def _on_resp(_resp):
