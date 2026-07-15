@@ -719,7 +719,51 @@ def run(args):
                 page.wait_for_timeout(150)
             print(set_backtest_range(page))
             page.wait_for_timeout(300)
+            # monkey-patch window.fetch:日志所有请求 + 自动修复胜率计算URL
+            # (表单session缺terminal-data-service base→fetch(undefined)抛TypeError,route拦不到)
+            page.evaluate(
+                """() => {
+                  window._fetchLog = [];
+                  if (window._fetchPatched) return;
+                  window._fetchPatched = true;
+                  const WINRATE = 'https://terminal.tongyu-quant.com/terminal-data-service/protect/v2/structure/helper/snowball-helper/new-back-test-analysis';
+                  const origFetch = window.fetch;
+                  window.fetch = function(url, opts) {
+                    try {
+                      const u = String(url);
+                      window._fetchLog.push({url: u.slice(0,250), method: (opts&&opts.method)||'GET', body: ((opts&&opts.body)||'').toString().slice(0,700)});
+                      if (u.includes('new-back-test-analysis') && !u.includes('terminal-data-service')) {
+                        url = WINRATE;
+                      }
+                    } catch(e) {}
+                    return origFetch.call(this, url, opts);
+                  };
+                }"""
+            )
             import json as _json2
+            # 搜 window 配置对象里 terminal-option-config(有)/terminal-data-service(缺)/new-back-test-analysis 的位置
+            try:
+                _conf = page.evaluate(
+                    """() => {
+                      const out = [];
+                      try {
+                        for (let i=0; i<localStorage.length; i++) {
+                          const k = localStorage.key(i); const v = localStorage.getItem(k) || '';
+                          if (v.includes('terminal') || v.includes('service') || v.includes('back-test') || v.includes('data-service')) out.push({store:'local', key:k, val:v.slice(0,300)});
+                        }
+                      } catch(e) {}
+                      try {
+                        for (let i=0; i<sessionStorage.length; i++) {
+                          const k = sessionStorage.key(i); const v = sessionStorage.getItem(k) || '';
+                          if (v.includes('terminal') || v.includes('service') || v.includes('back-test') || v.includes('data-service')) out.push({store:'session', key:k, val:v.slice(0,300)});
+                        }
+                      } catch(e) {}
+                      return out.slice(0,40);
+                    }"""
+                )
+                print("storage config search:", _json2.dumps(_conf, ensure_ascii=False)[:2500])
+            except Exception as _e:
+                print("config search err:", _e)
             _reqs = []
             _haina_resps = []
             _haina_reqs = []
@@ -768,6 +812,11 @@ def run(args):
             except Exception as e:
                 print(f"form.requestSubmit failed: {e}")
             page.wait_for_timeout(45000)
+            try:
+                _fl = page.evaluate("() => window._fetchLog || []")
+                print("fetch log:", _json2.dumps(_fl, ensure_ascii=False)[:3000])
+            except Exception as _e:
+                print("fetch log err:", _e)
             try:
                 page.remove_listener("request", _on_req)
                 page.remove_listener("response", _on_resp)
