@@ -9,6 +9,7 @@ from pathlib import Path
 CREDENTIALS = Path.home() / ".claude" / "tongyu-creds.json"
 PROFILE_DIR = str(Path.home() / ".claude" / "tongyu-profile")
 BASE = "https://terminal.tongyu-quant.com"
+_AUTH_HDRS = []
 
 
 def zh(s):
@@ -470,6 +471,73 @@ def set_terminal_barrier(page, value):
         return f"期末障碍价: NOINPUT ({e})"
 
 
+def direct_winrate(page, args):
+    """直通方案:绕过表单破URL构建器(terminal-data-service base undefined→TypeError),
+    直接 POST new-back-test-analysis API 拿真实胜率。body 按用户给的请求体格式构造。"""
+    import json as _j
+    WINRATE_URL = 'https://terminal.tongyu-quant.com/terminal-data-service/protect/v2/structure/helper/snowball-helper/new-back-test-analysis'
+    today = date.today()
+    try:
+        start = today.replace(year=today.year - 10)
+    except ValueError:
+        start = today.replace(year=today.year - 10, day=28)
+    # 早利锁盈票息: 月1-2=0(锁仓), 月3-18=rate1, 月19-36=rate2 (共36)
+    r1 = args.rate1 / 100.0
+    r2 = args.rate2 / 100.0
+    coupon_list = [0, 0] + [r1] * 16 + [r2] * 18
+    body = {
+        "chargeMargin": False,
+        "dividendCoupon": "0",
+        "endDate": today.isoformat(),
+        "instrumentId": "000852.SH",
+        "instrumentType": None,
+        "knockInBarrier": "1%",
+        "knockOutBarrier": f"{args.ko}%",
+        "knockOutBarrierDecreaseStep": args.step_down / 100.0,
+        "knockOutCouponRateListByTenor": coupon_list,
+        "knockOutObservationStep": "1M",
+        "lastKnockOutBarrier": f"{args.parachute}%",
+        "leftPEValue": None, "leftPriceRatio": None,
+        "margin": args.margin,
+        "noCallPeriodDuration": str(args.lock),
+        "optionStructure": "SNOWBALL_FLOATING",
+        "rightPEValue": None, "rightPriceRatio": None,
+        "snowballTypes": ["早利结构", "欧式结构", "降敲结构", "降落伞结构"],
+        "startDate": start.isoformat(),
+        "tenorToEndCalcCoupon": args.rate2_start,
+        "tenorToStartCalcCoupon": str(args.rate1_start),
+        "termInMonth": str(args.term),
+    }
+    # 找 auth token(umi自动加header,直fetch没有→401)
+    _ls = page.evaluate("() => { const out = {}; for (let i=0; i<localStorage.length; i++) { const k = localStorage.key(i); out[k] = (localStorage.getItem(k)||'').slice(0,300); } return out; }")
+    print("localStorage dump:", _j.dumps(_ls, ensure_ascii=False)[:2000])
+    _ck = page.evaluate("() => document.cookie || ''")
+    print("cookie:", _ck[:500])
+    _ss = page.evaluate("() => { const out = {}; for (let i=0; i<sessionStorage.length; i++) { const k = sessionStorage.key(i); out[k] = (sessionStorage.getItem(k)||'').slice(0,200); } return out; }")
+    print("sessionStorage dump:", _j.dumps(_ss, ensure_ascii=False)[:1500])
+    print("auth requests captured:", len(_AUTH_HDRS), [(a['url'][:60]) for a in _AUTH_HDRS[:5]])
+    res = page.evaluate(
+        """async ({url, body, authList}) => {
+          const results = [];
+          for (const a of authList) {
+            try {
+              const headers = {'Content-Type':'application/json'};
+              for (const k in a.hdrs) { headers[k] = a.hdrs[k]; }
+              const r = await fetch(url, {method:'POST', headers, body: JSON.stringify(body)});
+              const text = await r.text();
+              let j = null; try { j = JSON.parse(text); } catch(e) { j = text.slice(0,300); }
+              results.push({srcUrl: a.url.slice(0,60), status: r.status});
+              if (r.status === 200) return {status: 200, workedUrl: a.url, resp: j, tried: results.length};
+            } catch(e) { results.push({srcUrl: a.url.slice(0,60), err: String(e).slice(0,80)}); }
+          }
+          return {status: 'all-failed', tried: results.length, results: results.slice(0,6)};
+        }""",
+        {"url": WINRATE_URL, "body": body, "authList": _AUTH_HDRS},
+    )
+    print("DIRECT WINRATE response:", _j.dumps(res, ensure_ascii=False)[:3000])
+    return res
+
+
 def fill_split_coupon(page, args):
     """早利/蝶变分段票息：.split-coupon-wrap 容器内 input 按 DOM 顺序填
     [区间1起, 区间1止, 区间1票息, 区间2起, 区间2止, 区间2票息]。
@@ -634,6 +702,17 @@ def run(args):
             page.on("websocket", _on_ws)
             page.on("console", _on_console)
             page.on("pageerror", _on_pageerror)
+            # 早期抓 umi 请求的 auth headers(用于 direct_winrate 直 fetch 鉴权)
+            def _on_auth_req(req):
+                try:
+                    u = (req.url or '').lower()
+                    if 'terminal.tongyu-quant.com' in u and 'haina' not in u:
+                        hdrs = dict(req.headers)
+                        if hdrs.get('token') or hdrs.get('authorization') or hdrs.get('access-token'):
+                            _AUTH_HDRS.append({'url': req.url, 'hdrs': hdrs})
+                except Exception:
+                    pass
+            page.on("request", _on_auth_req)
             page.goto(f"{BASE}/#/login", wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(5000)
             if "/#/login" in page.url and page.locator(f'input[placeholder*="{TEXT["username"]}"]').count() > 0:
@@ -719,6 +798,8 @@ def run(args):
                 page.wait_for_timeout(150)
             print(set_backtest_range(page))
             page.wait_for_timeout(300)
+            # 直通:绕过表单破URL构建器,直接POST new-back-test-analysis拿真实胜率
+            direct_winrate(page, args)
             # monkey-patch window.fetch:日志所有请求 + 自动修复胜率计算URL
             # (表单session缺terminal-data-service base→fetch(undefined)抛TypeError,route拦不到)
             page.evaluate(
@@ -890,6 +971,7 @@ def main():
     parser.add_argument("--structure", default="DCN", help="基础结构：DCN/经典/早利/凤凰/蝶变；歧义词(多倍锁盈/全保锁盈)按分段票息自动判早利或经典")
     parser.add_argument("--term", type=int, required=True)
     parser.add_argument("--lock", type=int, default=3)
+    parser.add_argument("--margin", type=int, default=50, help="保证金比例%(如50)")
     parser.add_argument("--ko", type=float, required=True)
     parser.add_argument("--step-down", type=float, required=True)
     parser.add_argument("--parachute", type=float, required=True)
