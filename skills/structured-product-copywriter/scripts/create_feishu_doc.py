@@ -250,7 +250,7 @@ def create_rich_doc(base_url, token, title, rich_manifest, image_paths, base_dir
             elif im.mode == "L":
                 im = im.convert("RGB")
             max_w = 1200
-            max_h = 1800
+            max_h = 2100
             scale = min(max_w / im.width, max_h / im.height, 1.0)
             if scale < 1.0:
                 im = im.resize((max(1, int(im.width * scale)), max(1, int(im.height * scale))))
