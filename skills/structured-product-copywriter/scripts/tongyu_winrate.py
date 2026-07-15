@@ -420,6 +420,45 @@ def set_knock_in(page, value):
         return f"敲入价: NOINPUT ({e})"
 
 
+def set_terminal_barrier(page, value):
+    """期末障碍价=降落伞。精确锁定 #14：input 祖先文本以'期末障碍价'开头(区分敲入价'敲入价应...')，
+    逐字输入触发 React onChange。若找错打到敲入价→期末障碍价 React state 未更新→胜率计算请求 URL=undefined→TypeError→回测不跑。"""
+    inp = page.evaluate_handle(
+        """() => {
+          const ins = Array.from(document.querySelectorAll('input'));
+          for (const i of ins) {
+            let c = i;
+            for (let k=0;k<6;k++){
+              c = c.parentElement;
+              if (!c) break;
+              const t = (c.textContent||'').trim();
+              if (t.startsWith('期末障碍价') && !t.startsWith('敲入')) return i;
+            }
+          }
+          return null;
+        }"""
+    )
+    el = inp.as_element()
+    if not el:
+        return "期末障碍价: NOTFOUND"
+    # input 可能隐藏/不可点(.click 超时)；用 JS native setter+dispatch input/change/blur 触发 React onChange 更新 state
+    try:
+        v = el.evaluate(
+            """(el, v) => {
+              const s = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+              s.call(el, String(v));
+              el.dispatchEvent(new Event('input',{bubbles:true}));
+              el.dispatchEvent(new Event('change',{bubbles:true}));
+              el.dispatchEvent(new Event('blur',{bubbles:true}));
+              return el.value;
+            }""",
+            value,
+        )
+        return f"期末障碍价: js-set {v}"
+    except Exception as e:
+        return f"期末障碍价: NOINPUT ({e})"
+
+
 def fill_split_coupon(page, args):
     """早利/蝶变分段票息：.split-coupon-wrap 容器内 input 按 DOM 顺序填
     [区间1起, 区间1止, 区间1票息, 区间2起, 区间2止, 区间2票息]。
@@ -443,7 +482,12 @@ def fill_split_coupon(page, args):
         except Exception:
             disabled = True
         if disabled:
-            results.append(f"i{i}:SKIP(disabled)")
+            # disabled 字段(区间1票息"待计算")用 JS native setter+dispatch 试填(.fill 对 disabled 无效)；若 winrate URL 因它 undefined 致 TypeError
+            try:
+                v_set = inp.evaluate("(el, v) => { const s=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set; s.call(el, String(v)); el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); el.dispatchEvent(new Event('blur',{bubbles:true})); return el.value; }", v)
+                results.append(f"i{i}:DIS-js:{v_set}")
+            except Exception as e:
+                results.append(f"i{i}:DIS-err({e})")
             continue
         try:
             inp.click()
@@ -532,6 +576,18 @@ def run(args):
         return
 
     _ws_info = []
+    _console_msgs = []
+    def _on_console(msg):
+        try:
+            loc = msg.location
+            _console_msgs.append({'type': msg.type, 'text': msg.text, 'loc': (f"{loc.get('url','')}:{loc.get('lineNumber','')}" if loc else '')})
+        except Exception:
+            _console_msgs.append({'type': getattr(msg,'type','?'), 'text': getattr(msg,'text','')})
+    def _on_pageerror(err):
+        try:
+            _console_msgs.append({'type': 'pageerror', 'text': str(err), 'message': getattr(err, 'message', ''), 'stack': (getattr(err, 'stack', '') or '')[:800]})
+        except Exception:
+            _console_msgs.append({'type': 'pageerror', 'text': str(err)})
     def _on_ws(ws):
         try:
             _ws_info.append({'open': ws.url})
@@ -565,6 +621,8 @@ def run(args):
         try:
             page = ctx.new_page()
             page.on("websocket", _on_ws)
+            page.on("console", _on_console)
+            page.on("pageerror", _on_pageerror)
             page.goto(f"{BASE}/#/login", wait_until="domcontentloaded", timeout=60000)
             page.wait_for_timeout(5000)
             if "/#/login" in page.url and page.locator(f'input[placeholder*="{TEXT["username"]}"]').count() > 0:
@@ -610,7 +668,6 @@ def run(args):
                 (TEXT["term"], args.term),
                 (TEXT["first_ko"], args.ko),
                 (TEXT["ko_step"], args.step_down),
-                (TEXT["terminal_barrier"], args.parachute),
                 (TEXT["last_ko"], args.parachute),
             ]
             for label, value in common_fields:
@@ -627,11 +684,11 @@ def run(args):
                 page.wait_for_timeout(200)
                 print(set_knock_in(page, 1))
             page.wait_for_timeout(200)
-            print(set_by_label_typing(page, TEXT["terminal_barrier"], args.parachute))
+            print(set_terminal_barrier(page, args.parachute))
             page.wait_for_timeout(200)
             # 二次覆盖：末次观察敲出价=68、期末障碍价=68（放最后覆盖敲入价联动，不再动敲入价）
             print(set_by_label_typing(page, TEXT["last_ko"], args.parachute))
-            print(set_by_label_typing(page, TEXT["terminal_barrier"], args.parachute))
+            print(set_terminal_barrier(page, args.parachute))
             if getattr(args, "inspect_form", False):
                 inspect_form_structure(page)
                 return
@@ -669,10 +726,11 @@ def run(args):
                     pass
             def _on_resp(_resp):
                 try:
-                    if 'haina' in (_resp.url or '').lower():
+                    u = (_resp.url or '').lower()
+                    if 'haina' in u or 'structure-close-interval' in u or 'snowball' in u or 'winrate' in u or 'backtest' in u or 'calc' in u:
                         body = ''
                         try:
-                            body = _resp.text()[:400]
+                            body = _resp.text()[:800]
                         except Exception:
                             body = '<body-unreadable>'
                         _haina_resps.append({'status': _resp.status, 'url': _resp.url, 'body': body})
@@ -704,6 +762,9 @@ def run(args):
             print("haina request:", _json2.dumps(_haina_reqs, ensure_ascii=False)[:1200])
             print("haina responses:", _json2.dumps(_haina_resps, ensure_ascii=False)[:1200])
             print("websocket info (early-listener):", _json2.dumps(_ws_info, ensure_ascii=False)[:2000])
+            # console 报错/pageerror dump(看立即分析onClick是否抛异常致回测不跑)
+            _cerrs = [m for m in _console_msgs if m.get('type') in ('error','pageerror')]
+            print(f"console errors ({len(_cerrs)}/{len(_console_msgs)} total):", _json2.dumps(_cerrs, ensure_ascii=False)[:3000])
             # 诊断：立即分析是否触发了重算（按钮状态/胜率卡/加载指示/错误toast）
             print("post-analyze:", page.evaluate(
                 """() => {
@@ -712,7 +773,7 @@ def run(args):
                   const errs = Array.from(document.querySelectorAll('.ant-message-error, .ant-message-notice-content, .ant-form-item-explain-error, .ant-notification-notice-message, .ant-message-notice')).slice(0,10).map(e=>(e.textContent||'').trim().slice(0,100));
                   // 结果区文本（胜率/已完结合约/平均敲出时间 所在容器）
                   const rc = Array.from(document.querySelectorAll('*')).find(e => (e.textContent||'').includes('已完结合约') && e.querySelectorAll('*').length < 60);
-                  return {btnDisabled: btn?btn.disabled:'nobtn', winrateParent: wr?(wr.parentElement.textContent||'').trim().slice(0,40):'', errors: errs, resultArea: rc?(rc.textContent||'').trim().slice(0,200):'no-result-area', buttons: Array.from(document.querySelectorAll('button')).map(b=>({text:(b.textContent||'').trim().slice(0,20), disabled:b.disabled, type:b.type||''})).filter(b=>b.text)};
+                  return {btnDisabled: btn?btn.disabled:'nobtn', winrateParent: wr?(wr.parentElement.textContent||'').trim().slice(0,40):'', errors: errs, resultArea: rc?(rc.textContent||'').trim().slice(0,200):'no-result-area', buttons: Array.from(document.querySelectorAll('button')).map(b=>({text:(b.textContent||'').trim().slice(0,20), disabled:b.disabled, type:b.type||''})).filter(b=>b.text), spantxts: Array.from(document.querySelectorAll('.spantxt')).map(e=>({text:(e.textContent||'').trim().slice(0,15), active:((e.className||'').toString().includes('active'))}))};
                 }"""
             ))
             read_label = """(label) => {
