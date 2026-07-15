@@ -471,6 +471,60 @@ def set_terminal_barrier(page, value):
         return f"期末障碍价: NOINPUT ({e})"
 
 
+def generate_winrate_png(page, res, output, start_s, end_s):
+    """直调 API 拿到胜率后,生成一张胜率卡片图(胜率+敲出/敲入分布),截图保存。
+    表单立即分析因 umi URL bug 截图是缓存旧值,不能用;直调 API 返回 JSON 无视觉图,
+    故生成此卡片图替代。"""
+    if not res or res.get('status') != 200:
+        print(f"generate_winrate_png: skip (status={res.get('status') if res else 'None'})")
+        return
+    pl = (res.get('resp') or {}).get('payLoad') or {}
+    wr = pl.get('winRate', 0)
+    closed = pl.get('closedContractNum', 0) or 1
+    ko_non_ki = pl.get('koNonKiNum', 0)
+    non_ko_ki = pl.get('nonKoKiNum', 0)
+    profit = pl.get('profitNum', 0)
+    loss = pl.get('lossNum', 0)
+    data = {
+        'wr': f"{wr*100:.2f}%", 'start': start_s, 'end': end_s,
+        'closed': closed,
+        'koNonKi': ko_non_ki, 'koNonKiPct': f"{ko_non_ki/closed*100:.2f}",
+        'nonKoKi': non_ko_ki, 'nonKoKiPct': f"{non_ko_ki/closed*100:.2f}",
+        'profit': profit, 'profitPct': f"{profit/closed*100:.2f}",
+        'loss': loss, 'lossPct': f"{loss/closed*100:.2f}",
+    }
+    page.evaluate(
+        """(d) => {
+          const old = document.getElementById('wr-card'); if (old) old.remove();
+          const card = document.createElement('div');
+          card.id = 'wr-card';
+          card.style.cssText = 'font-family:-apple-system,sans-serif;padding:28px;background:#fff;width:580px;position:fixed;top:0;left:0;z-index:99999;border:1px solid #e8e8e8;';
+          card.innerHTML = '<div style="font-size:14px;color:#999;">产品胜率数据</div>'
+            + '<div style="font-size:52px;color:#d4380d;font-weight:bold;margin:8px 0;">' + d.wr + '</div>'
+            + '<div style="font-size:13px;color:#666;margin-bottom:16px;">十年回测胜率（' + d.start + ' 至 ' + d.end + '）· 中证1000 · 2倍早利锁盈</div>'
+            + '<table style="width:100%;border-collapse:collapse;font-size:14px;">'
+            + '<tr style="background:#fafafa;"><td style="padding:8px 12px;">已完结合约</td><td style="padding:8px 12px;text-align:right;">' + d.closed + '</td></tr>'
+            + '<tr><td style="padding:8px 12px;">未敲入敲出（盈利）</td><td style="padding:8px 12px;text-align:right;">' + d.koNonKi + ' (' + d.koNonKiPct + '%)</td></tr>'
+            + '<tr><td style="padding:8px 12px;">敲入未敲出（亏损）</td><td style="padding:8px 12px;text-align:right;">' + d.nonKoKi + ' (' + d.nonKoKiPct + '%)</td></tr>'
+            + '<tr style="background:#fafafa;"><td style="padding:8px 12px;color:#d4380d;font-weight:bold;">盈利</td><td style="padding:8px 12px;text-align:right;color:#d4380d;font-weight:bold;">' + d.profit + ' (' + d.profitPct + '%)</td></tr>'
+            + '<tr style="background:#fafafa;"><td style="padding:8px 12px;color:#999;">亏损</td><td style="padding:8px 12px;text-align:right;color:#999;">' + d.loss + ' (' + d.lossPct + '%)</td></tr>'
+            + '</table>';
+          document.body.appendChild(card);
+        }""",
+        data,
+    )
+    page.wait_for_timeout(500)
+    try:
+        page.locator("#wr-card").screenshot(path=output)
+        print(f"winrate card saved: {output}")
+    except Exception as e:
+        print(f"winrate card screenshot failed: {e}")
+    try:
+        page.evaluate("() => { const e = document.getElementById('wr-card'); if (e) e.remove(); }")
+    except Exception:
+        pass
+
+
 def direct_winrate(page, args):
     """直通方案:绕过表单破URL构建器(terminal-data-service base undefined→TypeError),
     直接 POST new-back-test-analysis API 拿真实胜率。body 按用户给的请求体格式构造。"""
@@ -535,7 +589,7 @@ def direct_winrate(page, args):
         {"url": WINRATE_URL, "body": body, "authList": _AUTH_HDRS},
     )
     print("DIRECT WINRATE response:", _j.dumps(res, ensure_ascii=False)[:3000])
-    return res
+    return res, start.isoformat(), today.isoformat()
 
 
 def fill_split_coupon(page, args):
@@ -799,7 +853,7 @@ def run(args):
             print(set_backtest_range(page))
             page.wait_for_timeout(300)
             # 直通:绕过表单破URL构建器,直接POST new-back-test-analysis拿真实胜率
-            direct_winrate(page, args)
+            _dw_res, _dw_start, _dw_end = direct_winrate(page, args)
             # monkey-patch window.fetch:日志所有请求 + 自动修复胜率计算URL
             # (表单session缺terminal-data-service base→fetch(undefined)抛TypeError,route拦不到)
             page.evaluate(
@@ -962,6 +1016,8 @@ def run(args):
             print(f"date_range: {date_range}")
             _warn_if_range_stale(date_range)
             print(f"screenshot: {args.output}")
+            # 直调API胜率卡片图覆盖立即分析的旧截图(stale缓存值,非本产品参数)
+            generate_winrate_png(page, _dw_res, args.output, _dw_start, _dw_end)
         finally:
             ctx.close()
 
