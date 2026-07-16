@@ -243,7 +243,7 @@ description: 为场外结构化产品(经典雪球/经典锁盈/早利锁盈/早
 - 第 8 节注意事项固定写三行占位: `申购费：（待补充）`、`赎回费：（待补充）`、`基金合同：（待补充）`,不得省略该节,不得自行编费用数字。
 - 第 9、10 节 AMAC 来源统一用最终详情页:管理人 `details/?type=1...`、产品 `details/?type=2...`。正文先写名称,再写详情页链接/卡片,截图只截 `.qiyeBox`/`.chanpinBox` 等实际内容容器的 bounding box,并 trim 删除底部和四周白边;不要停留在搜索结果页,不要保留整页空白。
 - 第 11 节展示 `账户:`、`账号:`、`银行:` 三个字段，**在打款备注下一行直接附上核验链接和截图**（不是写"见飞书FAQ"——必须把链接和图片提取出来放到物料文档里）。核验方式查找流程：
-  1. 从第 10 节产品公示里拿到**托管人名称**（如"华泰证券"）。
+  1. 从第 10 节产品公示里拿到**托管人名称**（如"海通证券""华泰证券"——**必须用实际产品的托管人名称，不要用此处的示例名"华泰证券"**）。
   2. 跑脚本：`python3 scripts/fetch_custody_info.py --manager "<托管人名称>" --output assets/custody-<托管人>.png`（脚本用飞书 Open API 读飞书文档 `TzWXdKAaeol7kTxs3BNcowqunJh` 的 blocks，找到 H4 标题匹配托管人名称，提取其下方"募集户核对地址："的链接 URL + 图片）。
   3. 脚本输出 `CUSTODY_RESULT: found=true manager=华泰证券 link=<URL> image=saved`——从 `link` 取 URL、从 `CUSTODY_IMAGE: saved=<path>` 取图片路径。
   4. **直接把链接 URL + 图片放到 manifest 第11节** body（`账户:... 账号:... 银行:... 募集户核对地址：<链接URL>`）+ image（`CUSTODY_IMAGE` 的路径）。有的托管人只有图片没链接（如华泰证券），就只放图片。

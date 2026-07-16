@@ -133,13 +133,17 @@ def main():
         print("CUSTODY_RESULT: found=false error=no_blocks")
         return
 
-    # 找 H4(block_type=6) 文字含托管人名
+    # 找 H4(block_type=6) 文字含托管人名(支持模糊匹配)
     manager = args.manager.strip()
+    # 去掉常见后缀，提取核心名(如"海通证券"→"海通"，"华泰证券股份有限公司"→"华泰")
+    import re as _re
+    manager_core = _re.sub(r'(证券|股份有限公司|股份公司|有限公司|公司)$', '', manager)
     h_idx = -1
     for i, b in enumerate(blocks):
         if b.get("block_type") == 6:
             txt = get_block_text(b).strip()
-            if manager in txt:
+            # 精确匹配 或 核心名匹配(如"海通"匹配"国泰海通")
+            if manager in txt or manager_core in txt or txt in manager:
                 h_idx = i
                 break
 
@@ -148,7 +152,7 @@ def main():
         for i, b in enumerate(blocks):
             if b.get("block_type") in (3, 4, 5, 6, 7, 8, 9):
                 txt = get_block_text(b).strip()
-                if manager in txt and len(txt) < 30:
+                if (manager in txt or manager_core in txt or txt in manager) and len(txt) < 30:
                     h_idx = i
                     break
 
