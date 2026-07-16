@@ -371,14 +371,20 @@ def main():
     if args.manifest:
         rich_manifest, image_paths, base_dir = manifest_to_rich_manifest(args.manifest)
         title = args.title or rich_manifest.get("title") or Path(args.manifest).stem
+        if title and not title.startswith(DOC_TITLE_PREFIX):
+            title = DOC_TITLE_PREFIX + title
         create_rich_doc(base_url, token, title, rich_manifest, image_paths, base_dir, args.folder_name, args.folder_token)
         return
     elif args.content_file:
         content = Path(args.content_file).read_text(encoding="utf-8")
         title = args.title or Path(args.content_file).stem
+        if title and not title.startswith(DOC_TITLE_PREFIX):
+            title = DOC_TITLE_PREFIX + title
     else:
         content = args.content
         title = args.title or "推介材料"
+        if title and not title.startswith(DOC_TITLE_PREFIX):
+            title = DOC_TITLE_PREFIX + title
     create_doc(base_url, token, title, content, args.folder_name, args.folder_token)
 
 

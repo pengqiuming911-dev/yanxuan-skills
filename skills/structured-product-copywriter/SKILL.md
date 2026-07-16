@@ -218,7 +218,7 @@ description: 为场外结构化产品(经典雪球/经典锁盈/早利锁盈/早
 - 胜率:`xvfb-run -a python3 scripts/tongyu_winrate.py --structure <DCN|经典|早利|凤凰|蝶变> --term <N> --lock <L> --margin <M> --ko <K> --step-down <S> --parachute <P> --rate1 <R1> --rate2 <R2> --rate1-start <3> --rate2-start <19> --output assets/tongyu-winrate-<标的>.png --headed`→ 脚本最后打印 **`WINRATE_RESULT: winrate=95.29% start=2016-07-15 end=2026-07-15 card=assets/tongyu-winrate-中证1000.png`**——**从这行取胜率+日期+卡片图路径**，填入 manifest 第6节 body（`回测时间从{start}到{end}，本产品胜率：{winrate}`）+ image（`card` 路径）。**直调 API 不走表单立即分析**(有 umi URL bug);`--margin`/`--rate1`/`--rate2` 是直调 API body 需要的(保证金%/区间1票息/区间2票息)。**必须跑此脚本并从 WINRATE_RESULT 行取值，不得留 [胜率待补] 占位**
 - 产品卡:`python3 scripts/product_card.py --underlying <标的> --term <N> --lock <L> --margin <M> --ko <K> --step-down <S> --parachute <P> --coupon-line <C> --coupon <M> --entry-point <点位> --output assets/product-card-<标的>.png`(入场日期=生成物料当天，不传 `--entry-date` 即默认 `date.today()`；入场点位用 `fetch_quote.py` 当天真实现价)
 - AMAC:`python3 scripts/amac_screenshot.py --manager "<管理人>" --product "<产品>" --outdir assets`
-- 飞书云文档:`python3 scripts/create_feishu_doc.py --manifest manifest.json --title "<产品简称>-<结构名称>"`(默认主交付,返回 `/docx/`)
+- 飞书云文档:`python3 scripts/create_feishu_doc.py --manifest manifest.json --title "<产品简称>-<结构名称>"`(默认主交付,返回 `/docx/`；**脚本自动加"销售物料："前缀**，--title 传不带前缀也行)
 - Word附件兜底:`python3 scripts/build_docx.py --manifest manifest.json --output 推介材料.docx && python3 scripts/upload_to_feishu.py --docx 推介材料.docx --title "<产品简称>-<结构名称>"`(仅在用户明确要求 Word/.docx 附件时使用,返回 `/file/`; `/file/` 不能作为默认交付)
 
 详见 references/tongyu-winrate.md「服务器跑通方案:Xvfb 有头」。openclaw 已装本技能(`openclaw skills install`),agent 调 exec 跑上述脚本(实测 fetch_quote 返回 8620.79 ✓)。
