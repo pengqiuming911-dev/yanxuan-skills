@@ -589,6 +589,10 @@ def direct_winrate(page, args):
         {"url": WINRATE_URL, "body": body, "authList": _AUTH_HDRS},
     )
     print("DIRECT WINRATE response:", _j.dumps(res, ensure_ascii=False)[:3000])
+    # 超简单输出行,供 openclaw agent 一行解析
+    if res.get('status') == 200:
+        _pl = (res.get('resp') or {}).get('payLoad') or {}
+        print(f"WINRATE_RESULT: winrate={_pl.get('winRate',0)*100:.2f}% start={start.isoformat()} end={today.isoformat()} card={args.output}")
     return res, start.isoformat(), today.isoformat()
 
 
