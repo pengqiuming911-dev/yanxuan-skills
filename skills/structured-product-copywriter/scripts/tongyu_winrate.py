@@ -751,6 +751,15 @@ def run(args):
         except Exception:
             pass
 
+    # 启动前清 SingletonLock（上次跑完可能锁住profile，导致本次启动失败→直调API取不到token→退回表单缓存值）
+    import os as _os
+    for _f in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+        _p = _os.path.join(PROFILE_DIR, _f)
+        try:
+            _os.remove(_p)
+        except OSError:
+            pass
+
     with sync_playwright() as pw:
         ctx = pw.chromium.launch_persistent_context(
             PROFILE_DIR,
