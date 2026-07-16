@@ -119,11 +119,13 @@ def main():
 
     if args.composite:
         print("\n" + "="*60)
-        print("复合结构：分别跑 DCN + 锁盈 胜率")
+        print("复合结构：严格串行跑 DCN + 锁盈 胜率（共用profile，必须串行+清lock）")
         print("="*60)
 
-        # DCN胜率
+        # DCN胜率（先跑）
         dcn_out = f"assets/tongyu-winrate-DCN.png"
+        # 清profile lock，确保profile不被上一个进程锁住
+        run("rm -f /root/.claude/tongyu-profile/Singleton* 2>/dev/null")
         stdout = run(
             f"xvfb-run -a python3 scripts/tongyu_winrate.py "
             f"--structure DCN --term {args.term} --lock {args.lock} --margin {args.dcn_margin} "
@@ -135,11 +137,14 @@ def main():
         wr = parse_winrate_result(stdout)
         if wr:
             winrate_results["DCN"] = wr
-            print(f"DCN胜率: {wr.get('winrate','?')}")
+            print(f"✅ DCN胜率: {wr.get('winrate','?')}")
         else:
-            print("DCN胜率: 取不到(直调API可能失败)")
+            print("❌ DCN胜率: 直调API失败(检查token/profile)")
 
-        # 锁盈胜率
+        # 清profile lock，等DCN的浏览器完全退出
+        run("rm -f /root/.claude/tongyu-profile/Singleton* 2>/dev/null; sleep 3")
+
+        # 锁盈胜率（后跑，串行）
         locky_out = f"assets/tongyu-winrate-锁盈.png"
         stdout = run(
             f"xvfb-run -a python3 scripts/tongyu_winrate.py "
@@ -153,9 +158,12 @@ def main():
         wr = parse_winrate_result(stdout)
         if wr:
             winrate_results["锁盈"] = wr
-            print(f"锁盈胜率: {wr.get('winrate','?')}")
+            print(f"✅ 锁盈胜率: {wr.get('winrate','?')}")
         else:
-            print("锁盈胜率: 取不到(直调API可能失败)")
+            print("❌ 锁盈胜率: 直调API失败(检查token/profile)")
+
+        # 清lock
+        run("rm -f /root/.claude/tongyu-profile/Singleton* 2>/dev/null")
 
     else:
         # 普通结构(单结构)
