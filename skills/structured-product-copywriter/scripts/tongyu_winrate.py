@@ -541,7 +541,7 @@ def direct_winrate(page, args):
     coupon_list = [0, 0] + [r1] * 16 + [r2] * 18
     body = {
         "chargeMargin": False,
-        "dividendCoupon": "0",
+        "dividendCoupon": str(args.dividend_coupon),
         "endDate": today.isoformat(),
         "instrumentId": "000852.SH",
         "instrumentType": None,
@@ -554,7 +554,7 @@ def direct_winrate(page, args):
         "leftPEValue": None, "leftPriceRatio": None,
         "margin": args.margin,
         "noCallPeriodDuration": str(args.lock),
-        "optionStructure": "SNOWBALL_FLOATING",
+        "optionStructure": args.option_structure,
         "rightPEValue": None, "rightPriceRatio": None,
         "snowballTypes": ["早利结构", "欧式结构", "降敲结构", "降落伞结构"],
         "startDate": start.isoformat(),
@@ -1032,6 +1032,8 @@ def main():
     parser.add_argument("--term", type=int, required=True)
     parser.add_argument("--lock", type=int, default=3)
     parser.add_argument("--margin", type=int, default=50, help="保证金比例%(如50)")
+    parser.add_argument("--dividend-coupon", type=str, default="0", help="DCN月派息(如0.699); 锁盈传0")
+    parser.add_argument("--option-structure", type=str, default="SNOWBALL_FLOATING", help="API optionStructure: 锁盈=SNOWBALL_FLOATING, DCN=SNOWBALL_FIXED")
     parser.add_argument("--ko", type=float, required=True)
     parser.add_argument("--step-down", type=float, required=True)
     parser.add_argument("--parachute", type=float, required=True)
