@@ -122,6 +122,8 @@ def main():
         # 8: 起始月-区间1, 9: 结束月-区间1, 10: 区间年化票息%
         # 11: 起始月-区间2, 12: 结束月-区间2, 13: 区间年化票息%
         # 14: 入场时间, 15: 入场点位
+        # 注意：不填降落伞(input 6,7)——填了会导致表单把降落伞值当成所有月份的敲出线，
+        # 覆盖逐月降敲(101%→100.5%→...→85%)。留默认0，表单正确算逐月降敲。
         values = {
             0: args.title,
             1: args.term,
@@ -129,8 +131,8 @@ def main():
             3: args.margin,
             4: args.ko,
             5: args.step_down,
-            6: args.parachute,
-            7: args.parachute_months,
+            # 6: args.parachute,   # 不填！会导致所有月份敲出线=降落伞值
+            # 7: args.parachute_months,  # 不填！
             8: args.rate1_start,
             9: args.rate1_end,
             10: args.rate1,
