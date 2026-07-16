@@ -19,13 +19,50 @@ description: 为场外结构化产品(经典雪球/经典锁盈/早利锁盈/早
 8. **AMAC 截图必须进入最终详情页**，不能停在搜索结果页；只截详情内容容器 bounding box，再 trim 白边。
 9. **产品点位图必须来自通毓”复制为图片”原始 PNG**。复制失败时显式报错或占位，不要用本地 HTML 重画表格，也不要截浏览器视口。
 10. **所有截图都不要按浏览器视口截图**。先定位目标内容容器，只截元素 bounding box，完成后 trim/crop，最终底部距离最后一行内容不超过 20px。
-11. **复合结构（月增产品）特殊处理**：当用户参数包含”复合”或一个产品有多个子结构（如”复合DCN不观察敲入｜DCN+锁盈”）时，需要**分别测算、分别生成图、分别描述**：
-    - **点位图**：第5节放**两张图片**（DCN点位图 + 锁盈点位图），manifest 里用两个连续的 image section。
-    - **胜率回测**：跑**两次** `tongyu_winrate.py`（一次DCN参数、一次锁盈参数），第6节放**两张胜率卡片图 + 两行文字**（一行DCN胜率、一行锁盈胜率），manifest 里用 body + image + body + image 四个连续 section。
-    - **DCN参数**：`--structure DCN --dividend-coupon <月派息> --option-structure SNOWBALL_FIXED --margin 100`（DCN全保=100%保证金），coupon-line 和 coupon 仍传。
-    - **锁盈参数**：`--structure 早利 --dividend-coupon 0 --option-structure SNOWBALL_FLOATING --margin <保证金%>`（如2.85倍杠杆→margin≈35），rate1/rate2 传敲出票息。
-    - **综合收益**：文案里写”综合收益”=DCN月派息年化+锁盈敲出票息，如”敲出收益：3-18个月敲出年化约11.66%（DCN月派息0.699%×12≈8.39%+锁盈3.27%），19-36个月约8.43%（8.39%+0.04%）”。
-    - **标题/卖点**：复合结构的卖点=DCN的月月派息+锁盈的敲出高票息+安全垫+降敲，突出”双收益叠加”。
+11. **复合结构（月增产品）必须分别测算，不得混合**：当用户参数包含”复合”、”月增”、或一个产品有多个子结构（如”复合DCN｜DCN+锁盈”）时，**必须拆成DCN和锁盈两组参数，分别跑点位图、分别跑胜率、分别生成图片**，不得合并成一张图/一次胜率。
+
+    **检测**：用户参数出现”复合”、”月增”、”DCN+锁盈”、”DCN不观察敲入”、或同时出现DCN的派息线和锁盈的敲出票息→判定为复合结构。
+
+    **拆分规则**（以”复合DCN不观察敲入｜中证1000｜36M锁3｜DCN全保，锁盈2.85倍杠杆不追保｜DCN: 4M起降敲0.5%, 36月降落伞65%, 派息线78%, 月派息0.699%｜锁盈: 4M起降敲0.5%, 36月降落伞65%｜锁盈敲出: 3-18M 3.27%, 19-36M 0.04%”为例）：
+
+    | 参数 | DCN子结构 | 锁盈子结构 |
+    |---|---|---|
+    | structure | DCN | 早利 |
+    | term/lock/ko/step-down/parachute | 36/3/101/0.5/65 | 36/3/101/0.5/65 |
+    | margin | 100（全保） | 35（2.85倍杠杆→100/2.85≈35） |
+    | dividend-coupon | 0.699（月派息） | 0 |
+    | coupon-line/coupon | 78/0.699（DCN用） | 不用 |
+    | rate1/rate2/rate1-start/rate2-start | 不用（DCN无分段敲出票息） | 3.27/0.04/3/19（锁盈用） |
+    | option-structure | SNOWBALL_FIXED | SNOWBALL_FLOATING |
+
+    **DCN胜率命令**：
+    ```bash
+    xvfb-run -a python3 scripts/tongyu_winrate.py --structure DCN --term 36 --lock 3 --margin 100 --ko 101 --step-down 0.5 --parachute 65 --coupon-line 78 --coupon 0.699 --dividend-coupon 0.699 --option-structure SNOWBALL_FIXED --rate1 0 --rate2 0 --output assets/tongyu-winrate-DCN.png --headed
+    ```
+
+    **锁盈胜率命令**：
+    ```bash
+    xvfb-run -a python3 scripts/tongyu_winrate.py --structure 早利 --term 36 --lock 3 --margin 35 --ko 101 --step-down 0.5 --parachute 65 --rate1 3.27 --rate2 0.04 --rate1-start 3 --rate2-start 19 --dividend-coupon 0 --option-structure SNOWBALL_FLOATING --output assets/tongyu-winrate-锁盈.png --headed
+    ```
+
+    **DCN点位图**：`product_card.py`（DCN用，选DCN类型）
+    **锁盈点位图**：`product_card_locky.py`（锁盈用，选锁盈类型）
+
+    **manifest 第5节**（两张点位图）：
+    ```json
+    {“type”:”image”,”path”:”assets/product-card-DCN.png”,”caption”:”DCN结构点位表”},
+    {“type”:”image”,”path”:”assets/product-card-锁盈.png”,”caption”:”锁盈结构点位表”}
+    ```
+
+    **manifest 第6节**（两张胜率图 + 两行文字）：
+    ```json
+    {“type”:”body”,”text”:”DCN结构：回测时间从{start}到{end}，胜率：{DCN胜率}%”},
+    {“type”:”image”,”path”:”assets/tongyu-winrate-DCN.png”,”caption”:”DCN胜率数据”},
+    {“type”:”body”,”text”:”锁盈结构：回测时间从{start}到{end}，胜率：{锁盈胜率}%”},
+    {“type”:”image”,”path”:”assets/tongyu-winrate-锁盈.png”,”caption”:”锁盈胜率数据”}
+    ```
+
+    **文案要点**：标题突出”双收益叠加”（如`【 月月派息·敲出高票息双收益｜中证1000 复合DCN+锁盈】`）；正文分别描述DCN的月月派息和锁盈的敲出票息，再加一段”综合收益”=两者相加（如”敲出收益3-18M约11.66%（DCN月派息0.699%×12≈8.39%+锁盈3.27%），19-36M约8.43%”）。
 11. **图片必须按正文两边对齐（满正文宽度）展示，不得是缩小居中图**。最终云文档里所有图片（产品卡、胜率、AMAC 管理人/产品）都要像手工截图粘贴那样撑满正文内容宽度、与左右正文边对齐，而不是缩小居中图。图片显示宽度由 workbench 图片块 `width` 控制：**用图片的自然像素宽高**（`DocxImageDisplaySize` 返回 `cfg.Width/cfg.Height`，不 cap），飞书会按正文内容宽度等比 clamp 显示——已用以前手贴图的销售文档核实：那些 image block 存的就是自然宽（2382/3174），飞书 clamp 后撑满两边。早期 cap 600/686 是「缩小居中图」根因，已改。窄于正文宽度的图保持原宽不放大。详见 `references/docx-template.md`「图片两边对齐」。
 12. **第 8 节注意事项必须存在且填占位**：正文固定写 `申购费：（待补充）`、`赎回费：（待补充）`、`基金合同：（待补充）` 三行，不要省略该节，也不要自行编费用数字。
 13. **第 1 节长版必须严格按 4 段顺序**，不得调换/合并/漏段：① 第一行 `🚀【 <卖点>｜<标的> <倍数> <结构>】` 标题；② 第二行**亮点摘取短句**——用客观数据写一句简短推介，数据密集、末尾带口语收尾（例：`62%深度安全垫，十年回测胜率97.88%，1.4%高票息，稳稳地幸福。`），不要写成五点特征罗列；③ 第三行**推介文案段**——根据结构特点写一段简短文案，简明扼要突出结构优势（当前点位→安全垫对比→降敲→杠杆→定位）；④ 最后**结构要素明细**——参数块（首行 `结构：<结构名称>`，逐行同用户原始参数）。短版只复用第 4 段参数块。

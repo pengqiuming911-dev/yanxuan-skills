@@ -538,7 +538,11 @@ def direct_winrate(page, args):
     # 早利锁盈票息: 月1-2=0(锁仓), 月3-18=rate1, 月19-36=rate2 (共36)
     r1 = args.rate1 / 100.0
     r2 = args.rate2 / 100.0
-    coupon_list = [0, 0] + [r1] * 16 + [r2] * 18
+    # DCN无敲出票息分段(用dividendCoupon月派息)，coupon_list全0；锁盈有分段敲出票息
+    if args.structure.strip().upper() == "DCN" or args.option_structure == "SNOWBALL_FIXED":
+        coupon_list = [0] * args.term
+    else:
+        coupon_list = [0, 0] + [r1] * 16 + [r2] * 18
     body = {
         "chargeMargin": False,
         "dividendCoupon": str(args.dividend_coupon),
