@@ -48,13 +48,19 @@ description: 为场外结构化产品(经典雪球/经典锁盈/早利锁盈/早
     **DCN点位图**：`product_card.py`（DCN用，选DCN类型）
     **锁盈点位图**：`product_card_locky.py`（锁盈用，选锁盈类型）
 
-    **manifest 第5节**（两张点位图）：
+    **执行顺序（严格按此顺序，不得跳步/合并）**：
+    1. 先跑 DCN 点位图：`python3 scripts/product_card.py --underlying <标的> --term 36 --lock 3 --margin 100 --ko 101 --step-down 0.5 --parachute 65 --coupon-line 78 --coupon 0.699 --entry-point <点位> --output assets/product-card-DCN.png`
+    2. 再跑 锁盈点位图：`python3 scripts/product_card_locky.py --title “<简称>-锁盈” --term 36 --lock 3 --margin 35 --ko 101 --step-down 0.5 --parachute 68 --parachute-months 36 --rate1-start 3 --rate1-end 18 --rate1 3.27 --rate2-start 19 --rate2-end 36 --rate2 0.04 --entry-point <点位> --output assets/product-card-锁盈.png`
+    3. 跑 DCN 胜率：`xvfb-run -a python3 scripts/tongyu_winrate.py --structure DCN --term 36 --lock 3 --margin 100 --ko 101 --step-down 0.5 --parachute 65 --coupon-line 78 --coupon 0.699 --dividend-coupon 0.699 --option-structure SNOWBALL_FIXED --rate1 0 --rate2 0 --output assets/tongyu-winrate-DCN.png --headed` → 从 `WINRATE_RESULT` 取 DCN 胜率
+    4. 跑 锁盈胜率：`xvfb-run -a python3 scripts/tongyu_winrate.py --structure 早利 --term 36 --lock 3 --margin 35 --ko 101 --step-down 0.5 --parachute 65 --rate1 3.27 --rate2 0.04 --rate1-start 3 --rate2-start 19 --dividend-coupon 0 --option-structure SNOWBALL_FLOATING --output assets/tongyu-winrate-锁盈.png --headed` → 从 `WINRATE_RESULT` 取 锁盈胜率
+
+    **manifest 第5节**（两张点位图，DCN在前锁盈在后）：
     ```json
     {“type”:”image”,”path”:”assets/product-card-DCN.png”,”caption”:”DCN结构点位表”},
     {“type”:”image”,”path”:”assets/product-card-锁盈.png”,”caption”:”锁盈结构点位表”}
     ```
 
-    **manifest 第6节**（两张胜率图 + 两行文字）：
+    **manifest 第6节**（DCN胜率一句话+截图在前，锁盈在后）：
     ```json
     {“type”:”body”,”text”:”DCN结构：回测时间从{start}到{end}，胜率：{DCN胜率}%”},
     {“type”:”image”,”path”:”assets/tongyu-winrate-DCN.png”,”caption”:”DCN胜率数据”},
