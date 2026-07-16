@@ -22,7 +22,7 @@ description: 为场外结构化产品(经典雪球/经典锁盈/早利锁盈/早
 11. **图片必须按正文两边对齐（满正文宽度）展示，不得是缩小居中图**。最终云文档里所有图片（产品卡、胜率、AMAC 管理人/产品）都要像手工截图粘贴那样撑满正文内容宽度、与左右正文边对齐，而不是缩小居中图。图片显示宽度由 workbench 图片块 `width` 控制：**用图片的自然像素宽高**（`DocxImageDisplaySize` 返回 `cfg.Width/cfg.Height`，不 cap），飞书会按正文内容宽度等比 clamp 显示——已用以前手贴图的销售文档核实：那些 image block 存的就是自然宽（2382/3174），飞书 clamp 后撑满两边。早期 cap 600/686 是「缩小居中图」根因，已改。窄于正文宽度的图保持原宽不放大。详见 `references/docx-template.md`「图片两边对齐」。
 12. **第 8 节注意事项必须存在且填占位**：正文固定写 `申购费：（待补充）`、`赎回费：（待补充）`、`基金合同：（待补充）` 三行，不要省略该节，也不要自行编费用数字。
 13. **第 1 节长版必须严格按 4 段顺序**，不得调换/合并/漏段：① 第一行 `🚀【 <卖点>｜<标的> <倍数> <结构>】` 标题；② 第二行**亮点摘取短句**——用客观数据写一句简短推介，数据密集、末尾带口语收尾（例：`62%深度安全垫，十年回测胜率97.88%，1.4%高票息，稳稳地幸福。`），不要写成五点特征罗列；③ 第三行**推介文案段**——根据结构特点写一段简短文案，简明扼要突出结构优势（当前点位→安全垫对比→降敲→杠杆→定位）；④ 最后**结构要素明细**——参数块（首行 `结构：<结构名称>`，逐行同用户原始参数）。短版只复用第 4 段参数块。
-14. **第 6 节胜率：回测区间=硬性 10 年（开始日=今天−10 年、结束日=今天），不得用旧日期或终端默认**。跑 `tongyu_winrate.py` 取真实胜率 + 回测区间——脚本点「立即分析」前 `set_backtest_range` 会**显式**把开始日设成今天−10 年、结束日设成今天（用 `.fill()` 或点 picker「今天」按钮，不靠终端默认、不用 flaky 的 native setter）；读取 `date_range` 后 `_warn_if_range_stale` 校验「结束日=今天 + 区间≈10 年」，偏离则告警提示在 picker 手动改后重跑。短历史标的（上市不足 10 年，如个股/新指数）终端会自动 clamp 到最大可得区间，照实写（可能 < 10 年）。脚本打印 `date_range`（如 `2016-07-14至2026-07-14`）。正文一句写成「回测时间从YYYY年MM月DD日到YYYY年MM月DD日，本产品胜率：XX.XX%」——日期**必须**用脚本当天实际回测区间，不要套用旧默认（2016-06-26~2026-06-25 已过期），也不要照抄 `references/docx-template.md` 骨架里的占位（那是待替换的占位符，不是真实日期）。胜率截图先定位结果统计容器 bounding box；定位不到时按整页裁图兜底：去掉顶部导航栏、底部约 1/3、右边约 1/4，只留中间结果区（脚本 `_crop_fallback` 已实现）。
+14. **第 6 节胜率：直调 `new-back-test-analysis` API 取真实胜率（不走表单立即分析）**。跑 `tongyu_winrate.py --structure <结构> --term <N> --lock <L> --margin <M> --ko <K> --step-down <S> --parachute <P> --rate1 <R1> --rate2 <R2> --rate1-start <3> --rate2-start <19> --output assets/tongyu-winrate-<标的>.png --headed`——脚本会：①填表单（结构/票息/敲入价=降落伞/期末障碍价=降落伞/日期双选）；②**直调 `new-back-test-analysis` API**（表单立即分析有 umi URL bug：terminal-data-service base undefined→TypeError→回测不触发；直调绕过它）→ 打印 `DIRECT WINRATE response: {"status":200,"resp":{"payLoad":{"winRate":0.9529...}}}`；③从 `winRate` 取胜率（0.9529→95.29%）+ 回测区间（startDate~endDate，硬性10年=今天−10年到今天）；④**生成胜率卡片图**（胜率+已完结合约+未敲入敲出/敲入未敲出/盈利/亏损分布表）到 `--output`。正文第6节写成「回测时间从YYYY年MM月DD日到YYYY年MM月DD日，本产品胜率：XX.XX%」+ 嵌入 `--output` 的胜率卡片图。**必须从 DIRECT WINRATE response 的 winRate 取真实值，不得留 [胜率待补] 占位**。**不得用表单立即分析的截图**（缓存旧值，非本产品参数）。
 15. **第 12 节销售常见问题必须用 `link_list` section + `[标题](url)` 清单格式，不得输出裸 URL 长链接**。manifest 里写 `{"type":"link_list","items":[]}`，`items` 可留空——`scripts/create_feishu_doc.py` 内置 7 条默认飞书 `/docx/` 链接（见 `references/docx-template.md`「销售常见问题固定链接」），留空时自动补全成 `- [标题](url)` 清单写入飞书云文档，可见文字是中文标题、不是裸 URL。手填 items 时每条必须是 `{label:中文标题, url:飞书/docx/ URL}`，**label 不要写成 URL**（label==url 时可见文字就是长链接，正是要消灭的坑；脚本会兜底改回「链接」，但 manifest 层面就该写对）。**禁止把 7 条链接塞进 `body` 当裸 URL 文本**——飞书会把裸 URL 当纯文本渲染成长链接；脚本对「FAQ body 含 feishu.cn/docx/ 裸链接」有兜底转 link_list，但 manifest 应直接用 `link_list`。7 个分类：管理人相关/交易台/托管/申购赎回流程/衍生品设计/衍选公司/销售沟通。拿不到某条真实 url 不要塞无 url 纯标签——留空让脚本补默认全 7 条。
 16. **飞书 markdown convert 对多段文本会乱序**：实测把多段落文本一次性丢给 `/docx/v1/documents/blocks/convert`，首段（🚀 标题行）会被挪到末尾、段落顺序被打乱。`create_feishu_doc.py` 的 `copy_file` 已按空行拆成多段、每段单独 convert 成单 block 按 section 顺序插入来锁定顺序——所以第 1 节长版 `copy_long.txt` 的 🚀 标题行能稳在首行。**勿把 copy_file 改回整段单 body**，写 copy_long.txt 时保持段落间空行分隔即可。
 
@@ -65,7 +65,7 @@ description: 为场外结构化产品(经典雪球/经典锁盈/早利锁盈/早
   ```
   脚本只依赖标准库,会从腾讯/新浪/东方财富三个源依次兜底取最新价,最后一行打印 `最新点位: <数字>`。脚本要和 SKILL.md 在同一技能目录下运行(即 `cd` 到技能目录或用相对路径 `scripts/fetch_quote.py`)。**取到了就用真实值,不要再用记忆里的旧点位**;脚本失败(网络不通等)才回头问用户要点位——绝不能因为脚本失败就编一个数字。
 - **历史参考底部**——用于和降落伞点位做安全垫对比。若标的是中证1000且用户未另给口径,默认采用 `2025年4月关税战底部中证1000收盘5437.45点`;用户给了其他底部/区间则以用户口径为准。其他标的没有默认底部时再一次性询问,不要临时编数字。
-- **回测胜率**(如"历史回测胜率98.14%")——这是文案最有冲击力的卖点,必须真实。默认**自动获取**,不要把"是否需要我跑胜率"作为问题抛给用户:若有 Playwright 浏览器控制能力,按 `references/tongyu-winrate.md` 的流程,登录通毓终端(`terminal.tongyu-quant.com`)的"结构化产品回测"页,把本产品的参数填进表单(文档里有产品参数→表单字段的完整映射),点"立即分析",读取真实胜率。凭证从环境变量 `TONGYU_USER`/`TONGYU_PASS` 或本地 `~/.claude/tongyu-creds.json` 读(**用脚本一行读出直接填,绝不手敲,手敲错一次就是一次 422,会触发滑块**),**不要写进技能文件**。登录走 `references/tongyu-winrate.md` 的"防风控"必做项(持久化 profile 复用登录态、逐字输入、单次干净提交)。没有浏览器自动化能力、站点不可达、或用户不在场无法人工配合时,退回 `[胜率待补]` 占位让用户手动提供——绝不能自己编一个胜率数字。用户主动给了胜率就直接用。若脚本 stdout 和截图/结果卡字段冲突,以截图中"胜率"卡片为准,不要把"盈利"统计项误当胜率。
+- **回测胜率**(如"历史回测胜率95.29%")——这是文案最有冲击力的卖点,必须真实。**自动获取**:跑 `tongyu_winrate.py`(见硬规则14),脚本**直调 `new-back-test-analysis` API**(不走表单立即分析——那个有 umi URL bug:terminal-data-service base undefined→TypeError→回测不触发),打印 `DIRECT WINRATE response: {"status":200,"resp":{"payLoad":{"winRate":0.9529...}}}`——从 `winRate` 取胜率(0.9529→95.29%)+回测区间(startDate~endDate,硬性10年)。脚本同时**生成胜率卡片图**到 `--output`。凭证从 `~/.claude/tongyu-creds.json` 读(持久化 profile 复用登录态)。**不得留 [胜率待补] 占位**——必须从 DIRECT WINRATE response 的 winRate 取真实值填入 manifest 第6节 body + 文案亮点短句。
 
 为什么当前点位和胜率可以自动取、历史底部通常可默认:当前点位是"现价",有公开实时行情,`fetch_quote.py` 能可靠拿到;胜率是回测算出来的,通毓终端能跑(见 `references/tongyu-winrate.md`),但依赖登录态和表单交互,遇滑块验证码时人工拖一下可救回。中证1000的关税战底部 5437.45 是本技能默认口径;其他标的没有默认底部时才询问。
 
@@ -169,7 +169,7 @@ description: 为场外结构化产品(经典雪球/经典锁盈/早利锁盈/早
 文案产出后默认自动生成材料资源,不需用户再开口要。最终主交付是 **飞书原生云文档 `/docx/`**,不是 Word 文件。Word(.docx) 只作为图片原样保真的备份/附件兜底。
 
 1. **产品结构卡图**:进通毓"产品点位"小工具(`smallTool/index.html#/product-position`),按产品参数填表(DCN 票息用"每月或有派息"填月票息,锁盈才用年化区间),提交→点"📋 复制为图片"→从浏览器剪贴板读原始 `image/png`(分块 base64,别 spread 爆栈),再做近白边缘 trim。不得用本地 HTML 重画表格,也不得用浏览器视口截图替代原图。见 `references/product-position-card.md`。
-2. **胜率结果截图**:进通毓"结构化产品回测"页,按产品参数填表点"立即分析",先定位"胜率+已完结合约表"统计区 DOM 容器,只截该元素 bounding box,再 trim/crop 四周空白;不要按浏览器视口截图(见 `references/tongyu-winrate.md`)。
+2. **胜率卡片图**:由 `tongyu_winrate.py` 的 `generate_winrate_png` 自动生成——直调 API 拿到胜率后,注入 HTML 卡片(胜率+已完结合约+敲出/敲入分布表)到页面 DOM,screenshot 保存到 `--output`。**不要用表单立即分析的截图**(缓存旧值,非本产品参数;立即分析有 umi URL bug 触发不了回测)。manifest 第6节 image 直接用 `--output` 路径。
 3. **管理人 + 产品公示截图**:进 AMAC(`amac.org.cn`)管理人最终详情页(type=1)和产品最终详情页(type=2),先定位详情内容容器(`.qiyeBox`/`.chanpinBox` 或等价有效内容容器),只截该元素 bounding box,再 trim/crop 白边;不要截搜索结果页,也不要按浏览器视口或整页截图。见 `references/amac-manager.md`。注意 AMAC 字段值是 JS 异步加载,纯 urllib 抓不到,必须用浏览器渲染后取。
 4. **写 manifest JSON**:章节结构仍参考 `references/docx-template.md`,用于同时生成飞书云文档正文与可选 Word 备份。manifest 里的 image section 会随 multipart 一起上传到 workbench,上传前会统一转成标准 JPEG,再由后端按 document_id 创建 image block、按 block_id 二次上传并 replace_image 绑定真实 token 后插入云文档正文;缺图时才写 `[图片待补:xxx]` 占位。
 
@@ -183,7 +183,7 @@ description: 为场外结构化产品(经典雪球/经典锁盈/早利锁盈/早
 - 文档结构固定 **12 节**,每个标题都是 H2；manifest 里统一使用 `subheading`。
 - 第 3 节“产品公告群通知”和第 4 节“稳定版接龙通知”正文暂时留空,不要自行生成话术。
 - 第 5 节图片必须来自通毓产品点位页“复制为图片”的原始剪贴板 PNG;复制失败要显式报错/占位,不要用自制表格或视口截图兜底。
-- 第 6 节先写一句“回测时间从YYYY年MM月DD日到YYYY年MM月DD，本产品胜率：XX.XX%”,再插入通毓结构化产品回测中间结果区截图。**回测区间用脚本 `tongyu_winrate.py` 实际输出的 `date_range`（如 2016-07-09至2026-07-08），不要套旧默认 2016-06-26~2026-06-25**（终端默认区间随当天滚动，旧值已过期）。胜率截图先定位结果统计内容容器、按 bounding box 截取并 trim;若 bounding box 定位不到,退回按整页裁图兜底:去掉页面顶部导航栏、去掉页面底部约 1/3、去掉原完整页面右边约 1/4,只留中间结果区（脚本 `_crop_fallback` 已实现）。最终图片底部距离最后一行内容不超过 20px。
+- 第 6 节先写一句“回测时间从YYYY年MM月DD日到YYYY年MM月DD，本产品胜率：XX.XX%”,再插入 `tongyu_winrate.py --output` 生成的**胜率卡片图**。胜率+回测区间从 `DIRECT WINRATE response` 的 `winRate`+body 的 `startDate`/`endDate` 取（硬性10年=今天−10年到今天）。**不要用表单立即分析的截图**（缓存旧值，非本产品参数）。**不要留 [胜率待补] 占位**。
 - 第 12 节销售常见问题：用 `link_list` section（`{"type":"link_list","items":[]}`），items 留空即可——`create_feishu_doc.py` 内置 7 条默认飞书 `/docx/` 链接自动补全成 `- [标题](url)` 清单。**不得把 7 条链接塞进 `body` 当裸 URL 文本**，可见文字必须是中文标题、不是裸 URL（见硬规则 15）。
 - 第 7 节一页通留 `[图片待补: 一页通]` 占位,待手工补入。
 - 第 8 节注意事项固定写三行占位: `申购费：（待补充）`、`赎回费：（待补充）`、`基金合同：（待补充）`,不得省略该节,不得自行编费用数字。
@@ -215,7 +215,7 @@ description: 为场外结构化产品(经典雪球/经典锁盈/早利锁盈/早
 服务器(无 GUI)或 openclaw 跑本技能时,浏览器操作(胜率/AMAC/产品卡)不用 Playwright MCP,改用 scripts/ 下 python 脚本(exec 调用),稳定且不依赖 LLM 浏览器 agent。openclaw agent(DeepSeek)调 exec 跑脚本,文案 LLM 写,manifest LLM 组装。
 
 - 当前点位:`python3 scripts/fetch_quote.py <标的>`
-- 胜率:`xvfb-run -a python3 scripts/tongyu_winrate.py --structure <DCN|经典|早利|凤凰|蝶变> --term <N> --ko <K> --step-down <S> --parachute <P> --coupon-line <C> --coupon <M> --output assets/tongyu-winrate-<标的>.png --headed`(Xvfb 有头绕滑块,实测 98.14%;`--structure` 按结构名映射,歧义词如多倍锁盈/全保锁盈传 `早利` 或 `经典` 由分段票息定)
+- 胜率:`xvfb-run -a python3 scripts/tongyu_winrate.py --structure <DCN|经典|早利|凤凰|蝶变> --term <N> --lock <L> --margin <M> --ko <K> --step-down <S> --parachute <P> --rate1 <R1> --rate2 <R2> --rate1-start <3> --rate2-start <19> --output assets/tongyu-winrate-<标的>.png --headed`→ 读 `DIRECT WINRATE response` 的 `winRate`(如0.9529→95.29%);脚本同时生成胜率卡片图到 `--output`。**直调 API 不走表单立即分析**(有 umi URL bug);`--margin`/`--rate1`/`--rate2` 是直调 API body 需要的(保证金%/区间1票息/区间2票息)
 - 产品卡:`python3 scripts/product_card.py --underlying <标的> --term <N> --lock <L> --margin <M> --ko <K> --step-down <S> --parachute <P> --coupon-line <C> --coupon <M> --entry-point <点位> --output assets/product-card-<标的>.png`(入场日期=生成物料当天，不传 `--entry-date` 即默认 `date.today()`；入场点位用 `fetch_quote.py` 当天真实现价)
 - AMAC:`python3 scripts/amac_screenshot.py --manager "<管理人>" --product "<产品>" --outdir assets`
 - 飞书云文档:`python3 scripts/create_feishu_doc.py --manifest manifest.json --title "<产品简称>-<结构名称>"`(默认主交付,返回 `/docx/`)
@@ -230,7 +230,7 @@ description: 为场外结构化产品(经典雪球/经典锁盈/早利锁盈/早
 - [ ] 降落伞绝对点位 = 当前点位 × 降落伞%,算对了
 - [ ] 期初敲出绝对点位算对了(如果文案用到)
 - [ ] 降落伞点位 vs 历史底部的对比方向诚实(低于才吹安全垫)
-- [ ] 胜率:能自动取就跑了通毓终端取真实值(凭证用脚本读、逐字输入、持久化 profile);遇滑块先暂停让用户人工拖滑块救回,救不回才用 `[胜率待补]` 占位;没编数字
+- [ ] 胜率:跑了 `tongyu_winrate.py` 直调 `new-back-test-analysis` API,从 `DIRECT WINRATE response` 的 `winRate` 取真实值(如0.9529→95.29%);manifest 第6节 body 填真实胜率+回测区间,image 用脚本 `--output` 生成的胜率卡片图;**没留 [胜率待补] 占位**,没编数字
 - [ ] 第 5、6 节是当前时间口径:产品卡入场日期=生成物料当天(`--entry-date` 不传即 `date.today()`)、入场点位=`fetch_quote.py` 当天真实现价;第 6 节回测区间=硬性 10 年(`tongyu_winrate.py` 的 `set_backtest_range` 显式设开始日=今天−10 年、结束日=今天,`_warn_if_range_stale` 校验区间≈10 年+结束日=今天,见告警需手动在 picker 改后重跑),正文回测区间用脚本当天实际 `date_range`,没套旧默认 2016-06-26~2026-06-25、没照抄 docx-template 骨架占位;短历史标的终端自动 clamp、照实写
 - [ ] 长版 + 短版都给了;长版/短版参数块首行是 `结构：<结构名称>`,文末结构要素与用户原始参数逐行一致
 - [ ] 标题是正向卖点、非条件句;保证金 100% 时没误写"2 倍/双倍"
